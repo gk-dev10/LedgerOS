@@ -1,0 +1,25 @@
+# Build output
+kernel/bin/
+kernel/obj/
+
+# Generated Limine files
+limine-binary/
+
+# Generated ISO
+*.iso
+
+# Generated filesystem
+iso_root/
+
+# Temporary/editor files
+*.swp
+*.tmp
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
