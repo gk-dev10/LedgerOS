@@ -41,3 +41,11 @@ void framebuffer_put_pixel(
 Framebuffer *framebuffer_get(void) {
     return &framebuffer;
 }
+
+uint32_t framebuffer_get_width(void) {
+    return (uint32_t)framebuffer.width;
+}
+
+uint32_t framebuffer_get_height(void) {
+    return (uint32_t)framebuffer.height;
+}

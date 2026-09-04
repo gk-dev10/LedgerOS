@@ -18,6 +18,9 @@ void framebuffer_init(
     uint64_t pitch
 );
 
+uint32_t framebuffer_get_width(void);
+uint32_t framebuffer_get_height(void);
+
 void framebuffer_clear(uint32_t color);
 
 void framebuffer_put_pixel(

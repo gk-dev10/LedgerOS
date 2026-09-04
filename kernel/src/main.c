@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <limine.h>
 #include "drivers/framebuffer.h"
+#include "console/console.h"
+#include "interrupts/interrupts.h"
+#include "timer/timer.h"
 
 // Set the base revision to 6, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -63,8 +66,27 @@ void kmain(void) {
         framebuffer->pitch
     );
 
-    framebuffer_clear(0x00101824);
+    console_init();
+    console_clear();
+    console_write("=========================================\n");
+    console_write("              LEDGEROS\n");
+    console_write("=========================================\n\n");
+    console_write("[BOOT] Kernel started\n");
+    console_write("[ OK ] Framebuffer initialized\n");
+    console_write("[ OK ] Console initialized\n");
 
-    // We're done, just hang...
-    hcf();
+    interrupts_init();
+    console_write("[ OK ] Interrupt subsystem initialized\n");
+
+    timer_init(100); // 100 Hz
+    console_write("[ OK ] Timer initialized\n\n");
+    
+    console_write("LedgerOS kernel ready.\n");
+
+    // Enable interrupts now that all modules are fully initialized
+    interrupts_enable();
+
+    for (;;) {
+        asm ("hlt");
+    }
 }
