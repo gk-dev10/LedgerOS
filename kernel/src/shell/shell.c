@@ -22,6 +22,8 @@ static void shell_prompt(void) {
 static void shell_execute(const char *cmd) {
     if (cmd_len == 0) return;
 
+    console_printf("\n[DEBUG SHELL] Executing command: '%s'\n", cmd);
+
     if (memcmp(cmd, "help", 4) == 0 && (cmd[4] == '\0' || cmd[4] == ' ')) {
         console_write("\n--- LedgerOS Interactive Shell Commands ---\n");
         console_write("  help     - Show this help manual\n");
