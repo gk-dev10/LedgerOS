@@ -6,6 +6,7 @@
 #include "console/console.h"
 #include "interrupts/interrupts.h"
 #include "timer/timer.h"
+#include "memory/heap.h"
 #include "drivers/keyboard.h"
 #include "shell/shell.h"
 
@@ -64,6 +65,9 @@ void kmain(void) {
 
     interrupts_init();
     console_write("[ OK ] Interrupt subsystem initialized\n");
+
+    heap_init();
+    console_write("[ OK ] Kernel heap memory manager initialized (4 MB)\n");
 
     timer_init(100); // 100 Hz
     console_write("[ OK ] Timer initialized\n");

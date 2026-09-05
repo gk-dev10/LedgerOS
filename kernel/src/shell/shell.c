@@ -3,6 +3,7 @@
 #include "../drivers/keyboard.h"
 #include "../timer/timer.h"
 #include "../memory.h"
+#include "../memory/heap.h"
 #include "../arch/x86_64/io.h"
 
 #define CMD_BUFFER_SIZE 128
@@ -40,8 +41,12 @@ static void shell_execute(const char *cmd) {
         console_write("              LEDGEROS SHELL\n");
         console_write("=========================================\n\n");
     } else if (memcmp(cmd, "mem", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
-        console_write("\n[MEM] Heap Allocator Subsystem Ready.\n");
-        console_write("[MEM] Call heap_init() to inspect dynamic kernel allocation.\n\n");
+        size_t total = 0, used = 0, free_b = 0;
+        heap_get_stats(&total, &used, &free_b);
+        console_write("\n--- LedgerOS Kernel Heap Memory Stats ---\n");
+        console_printf("  Total Heap Size : %u KB (%u bytes)\n", (uint32_t)(total / 1024), (uint32_t)total);
+        console_printf("  Used Memory     : %u KB (%u bytes)\n", (uint32_t)(used / 1024), (uint32_t)used);
+        console_printf("  Free Memory     : %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
     } else if (memcmp(cmd, "ps", 2) == 0 && (cmd[2] == '\0' || cmd[2] == ' ')) {
         console_write("\n[PS] Process Control Subsystem Ready.\n");
         console_write("[PS] PID 0: [RUNNING] Kernel Main\n\n");
