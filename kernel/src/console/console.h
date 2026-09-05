@@ -13,6 +13,8 @@ void console_write(const char *text);
 
 void console_writeln(const char *text);
 
+void console_printf(const char *fmt, ...);
+
 void console_set_color(
     uint32_t foreground,
     uint32_t background

@@ -11,6 +11,8 @@ typedef struct {
     uint64_t pitch;
 } Framebuffer;
 
+typedef Framebuffer framebuffer_t;
+
 void framebuffer_init(
     volatile uint32_t *address,
     uint64_t width,
