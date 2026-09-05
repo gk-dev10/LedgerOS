@@ -4,6 +4,7 @@
 #include "../timer/timer.h"
 #include "../memory.h"
 #include "../memory/heap.h"
+#include "../scheduler/scheduler.h"
 #include "../arch/x86_64/io.h"
 
 #define CMD_BUFFER_SIZE 128
@@ -48,10 +49,27 @@ static void shell_execute(const char *cmd) {
         console_printf("  Used Memory     : %u KB (%u bytes)\n", (uint32_t)(used / 1024), (uint32_t)used);
         console_printf("  Free Memory     : %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
     } else if (memcmp(cmd, "ps", 2) == 0 && (cmd[2] == '\0' || cmd[2] == ' ')) {
-        console_write("\n[PS] Process Control Subsystem Ready.\n");
-        console_write("[PS] PID 0: [RUNNING] Kernel Main\n\n");
+        pcb_t *plist = NULL;
+        size_t total_count = process_get_all(&plist);
+        console_write("\nPID  STATE       PRIORITY  TICKS  NAME\n");
+        console_write("---  ----------  --------  -----  ------------------------\n");
+        for (size_t i = 0; i < total_count; i++) {
+            if (plist[i].state != PROCESS_UNUSED) {
+                const char *st_str = "UNKNOWN";
+                switch (plist[i].state) {
+                    case PROCESS_READY:      st_str = "READY"; break;
+                    case PROCESS_RUNNING:    st_str = "RUNNING"; break;
+                    case PROCESS_BLOCKED:    st_str = "BLOCKED"; break;
+                    case PROCESS_TERMINATED: st_str = "TERMINATED"; break;
+                    default: break;
+                }
+                console_printf("%-4u %-11s %-9u %-6u %s\n",
+                    plist[i].pid, st_str, plist[i].priority, (uint32_t)plist[i].cpu_ticks, plist[i].name);
+            }
+        }
+        console_write("\n");
     } else if (memcmp(cmd, "sched", 5) == 0 && (cmd[5] == '\0' || cmd[5] == ' ')) {
-        console_write("\n[SCHED] Priority Round-Robin Scheduler ready.\n\n");
+        scheduler_start_demo();
     } else if (memcmp(cmd, "ipc", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
         console_write("\n[IPC] Ring-Buffer IPC Mailbox ready.\n\n");
     } else if (memcmp(cmd, "reboot", 6) == 0 && (cmd[6] == '\0' || cmd[6] == ' ')) {

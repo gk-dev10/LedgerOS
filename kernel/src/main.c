@@ -7,6 +7,7 @@
 #include "interrupts/interrupts.h"
 #include "timer/timer.h"
 #include "memory/heap.h"
+#include "scheduler/scheduler.h"
 #include "drivers/keyboard.h"
 #include "shell/shell.h"
 
@@ -68,6 +69,9 @@ void kmain(void) {
 
     heap_init();
     console_write("[ OK ] Kernel heap memory manager initialized (4 MB)\n");
+
+    scheduler_init();
+    console_write("[ OK ] Process Control & CPU Scheduler initialized\n");
 
     timer_init(100); // 100 Hz
     console_write("[ OK ] Timer initialized\n");
