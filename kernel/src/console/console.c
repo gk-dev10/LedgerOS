@@ -1,6 +1,7 @@
 #include "console.h"
 #include "../drivers/framebuffer.h"
 #include "../drivers/serial.h"
+#include "../memory.h"
 #include "font8x8.h"
 #include <stdarg.h>
 #include <stdbool.h>
@@ -17,6 +18,30 @@ static uint64_t cursor_y = 0;
 static uint32_t foreground = DEFAULT_FOREGROUND;
 static uint32_t background = DEFAULT_BACKGROUND;
 
+static void console_scroll_up(void) {
+    const framebuffer_t *fb = framebuffer_get();
+    if (!fb || !fb->address || fb->height <= CONSOLE_FONT_HEIGHT) return;
+
+    size_t pitch_dwords = fb->pitch / 4;
+    size_t copy_rows = fb->height - CONSOLE_FONT_HEIGHT;
+
+    // Shift framebuffer pixels up by CONSOLE_FONT_HEIGHT (8 pixels)
+    memmove(
+        (void *)fb->address,
+        (const void *)&fb->address[CONSOLE_FONT_HEIGHT * pitch_dwords],
+        copy_rows * fb->pitch
+    );
+
+    // Clear the bottom line with background color
+    for (size_t y = copy_rows; y < fb->height; y++) {
+        for (size_t x = 0; x < fb->width; x++) {
+            fb->address[y * pitch_dwords + x] = background;
+        }
+    }
+
+    cursor_y = copy_rows;
+}
+
 static void console_newline(void) {
     cursor_x = 0;
     cursor_y += CONSOLE_FONT_HEIGHT;
@@ -24,8 +49,7 @@ static void console_newline(void) {
     const framebuffer_t *fb = framebuffer_get();
 
     if (cursor_y + CONSOLE_FONT_HEIGHT >= fb->height) {
-        cursor_y = 0;
-        framebuffer_clear(background);
+        console_scroll_up();
     }
 }
 
