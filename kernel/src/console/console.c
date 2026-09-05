@@ -81,12 +81,18 @@ void console_set_color(
 }
 
 void console_putc(char c) {
-
-    const framebuffer_t *fb =
-        framebuffer_get();
+    const framebuffer_t *fb = framebuffer_get();
 
     if (c == '\n') {
         console_newline();
+        return;
+    }
+
+    if (c == '\b') {
+        if (cursor_x >= CONSOLE_FONT_WIDTH) {
+            cursor_x -= CONSOLE_FONT_WIDTH;
+            console_draw_char(' ', cursor_x, cursor_y);
+        }
         return;
     }
 
