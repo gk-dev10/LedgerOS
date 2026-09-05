@@ -34,6 +34,22 @@ static void hcf(void) {
     }
 }
 
+static void print_splash_screen(void) {
+    console_set_color(0x0000FFFF, 0x00101018); // Cyan Accent
+    console_write("  _           _                 ___  ____  \n");
+    console_write(" | |    ___ _| | __ _  ___ _ __/ _ \\/ ___| \n");
+    console_write(" | |   / _ \\ _ |/ _` |/ _ \\ '__| | | \\___ \\ \n");
+    console_write(" | |__|  __/ (_| (_| |  __/ |  | |_| |___) |\n");
+    console_write(" |_____\\___|\\__,_|\\__, |\\___|_|   \\___/____/ \n");
+    console_write("                  |___/                      \n");
+    console_set_color(0x00FFFFFF, 0x00101018); // White
+    console_write("=====================================================\n");
+    console_write("    LedgerOS x86-64 Bootable Operating System v1.0   \n");
+    console_write("=====================================================\n\n");
+    console_write("  [BOOT] Kernel & Subsystems Initialized Successfully.\n");
+    console_write("  [INFO] Type 'help' to view available OS commands.\n\n");
+}
+
 void kmain(void) {
     if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
         hcf();
@@ -56,48 +72,21 @@ void kmain(void) {
     console_init();
     serial_init();
     console_clear();
-    console_write("=========================================\n");
-    console_write("              LEDGEROS\n");
-    console_write("=========================================\n\n");
-    console_write("[BOOT] Kernel started\n");
-    console_write("[ OK ] Framebuffer initialized\n");
-    console_write("[ OK ] Console initialized\n");
 
     interrupts_init();
-    console_write("[ OK ] Interrupt subsystem initialized\n");
-
     heap_init();
-    console_write("[ OK ] Kernel heap memory manager initialized (4 MB)\n");
-
     scheduler_init();
-    console_write("[ OK ] Process Control & CPU Scheduler initialized\n");
-
     ipc_init();
-    console_write("[ OK ] IPC Ring-Buffer & Spinlock subsystem initialized\n");
-
     timer_init(100); // 100 Hz
-    console_write("[ OK ] Timer initialized\n");
-
     keyboard_init();
-    console_write("[ OK ] PS/2 Keyboard driver initialized\n\n");
-
     interrupts_enable();
 
-    // Auto-run OS Concept Demos immediately on bootup
-    console_write("=========================================\n");
-    console_write("  LEDGEROS CORE OS CONCEPT DEMONSTRATION\n");
-    console_write("=========================================\n");
-    shell_execute("info");
-    shell_execute("mem");
-    shell_execute("ps");
-    shell_execute("sched");
-    shell_execute("ipc");
-    console_write("-----------------------------------------\n");
-    console_write("Demonstration complete. Interactive shell ready.\n\n");
+    // Render Splash Screen
+    print_splash_screen();
 
     shell_init();
 
-    // Continuous polling loop without hlt for instant input response
+    // Continuous polling loop
     for (;;) {
         shell_update();
     }
