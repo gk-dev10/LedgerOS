@@ -85,15 +85,25 @@ static void shell_execute(const char *cmd) {
     }
 }
 
+static bool last_cursor_state = false;
+
 void shell_init(void) {
     cmd_len = 0;
     memset(cmd_buf, 0, sizeof(cmd_buf));
     shell_prompt();
+    console_draw_cursor(true);
+    last_cursor_state = true;
 }
 
 void shell_update(void) {
+    bool has_typed = false;
+
     while (keyboard_has_char()) {
         char c = keyboard_getchar();
+        if (!has_typed) {
+            console_draw_cursor(false);
+            has_typed = true;
+        }
 
         if (c == '\n') {
             console_putc('\n');
@@ -114,5 +124,12 @@ void shell_update(void) {
                 console_putc(c);
             }
         }
+    }
+
+    // Blinking cursor toggle every ~30 ticks (300ms)
+    bool current_cursor = ((timer_get_ticks() / 30) % 2) == 0;
+    if (current_cursor != last_cursor_state || has_typed) {
+        console_draw_cursor(current_cursor);
+        last_cursor_state = current_cursor;
     }
 }

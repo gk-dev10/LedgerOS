@@ -32,20 +32,27 @@ static void kbd_push_char(char c) {
     }
 }
 
-__attribute__((interrupt)) static void isr_keyboard(struct interrupt_frame *frame) {
-    (void)frame;
-
-    uint8_t scancode = inb(0x60);
-
+static void process_scancode(uint8_t scancode) {
     if (scancode == 0x2A || scancode == 0x36) { // Left/Right Shift Pressed
         shift_pressed = true;
     } else if (scancode == 0xAA || scancode == 0xB6) { // Left/Right Shift Released
         shift_pressed = false;
     } else if (!(scancode & 0x80)) { // Key press event
-        char c = shift_pressed ? scancode_ascii_uppercase[scancode] : scancode_ascii_lowercase[scancode];
-        if (c != 0) {
-            kbd_push_char(c);
+        if (scancode < 128) {
+            char c = shift_pressed ? scancode_ascii_uppercase[scancode] : scancode_ascii_lowercase[scancode];
+            if (c != 0) {
+                kbd_push_char(c);
+            }
         }
+    }
+}
+
+__attribute__((interrupt)) static void isr_keyboard(struct interrupt_frame *frame) {
+    (void)frame;
+
+    while (inb(0x64) & 0x01) {
+        uint8_t scancode = inb(0x60);
+        process_scancode(scancode);
     }
 
     outb(0x20, 0x20); // Send EOI to PIC master
@@ -56,6 +63,11 @@ void keyboard_init(void) {
     kbd_tail = 0;
     shift_pressed = false;
 
+    // Flush any stale data in PS/2 buffer
+    for (int i = 0; i < 64 && (inb(0x64) & 0x01); i++) {
+        inb(0x60);
+    }
+
     // Set vector 33 (IRQ1) to keyboard ISR
     idt_set_descriptor(33, isr_keyboard, 0x8E);
 
@@ -65,11 +77,16 @@ void keyboard_init(void) {
 }
 
 bool keyboard_has_char(void) {
+    // Poll hardware PS/2 buffer as fallback to guarantee key capture
+    while (inb(0x64) & 0x01) {
+        uint8_t scancode = inb(0x60);
+        process_scancode(scancode);
+    }
     return kbd_head != kbd_tail;
 }
 
 char keyboard_getchar(void) {
-    if (kbd_head == kbd_tail) {
+    if (!keyboard_has_char()) {
         return 0;
     }
     char c = kbd_buffer[kbd_tail];
