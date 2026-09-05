@@ -1,21 +1,15 @@
 #include "timer.h"
 #include "../interrupts/interrupts.h"
 #include "../arch/x86_64/io.h"
-#include "../console/console.h"
 #include "../scheduler/scheduler.h"
 
 static volatile uint64_t system_ticks = 0;
-static uint32_t timer_freq = 0;
+static uint32_t timer_freq = 100;
 
 __attribute__((interrupt)) static void isr_timer(struct interrupt_frame *frame) {
     (void)frame;
     system_ticks++;
     scheduler_tick();
-    
-    // First 5 ticks always print, then every second
-    if (system_ticks <= 5 || system_ticks % timer_freq == 0) {
-        console_printf("[TIMER] 1 second passed (Tick: %u)\n", system_ticks);
-    }
     
     // Send EOI (End of Interrupt) to Master PIC
     outb(0x20, 0x20);

@@ -51,10 +51,8 @@ static void process_scancode(uint8_t scancode) {
 __attribute__((interrupt)) static void isr_keyboard(struct interrupt_frame *frame) {
     (void)frame;
 
-    while (inb(0x64) & 0x01) {
-        uint8_t scancode = inb(0x60);
-        process_scancode(scancode);
-    }
+    uint8_t scancode = inb(0x60);
+    process_scancode(scancode);
 
     outb(0x20, 0x20); // Send EOI to PIC master
 }
@@ -65,7 +63,7 @@ void keyboard_init(void) {
     shift_pressed = false;
 
     // Flush any stale data in PS/2 buffer
-    for (int i = 0; i < 64 && (inb(0x64) & 0x01); i++) {
+    for (int i = 0; i < 16 && (inb(0x64) & 0x01); i++) {
         inb(0x60);
     }
 
@@ -81,7 +79,7 @@ bool keyboard_has_char(void) {
     if (serial_has_char()) {
         return true;
     }
-    while (inb(0x64) & 0x01) {
+    if (inb(0x64) & 0x01) {
         uint8_t scancode = inb(0x60);
         process_scancode(scancode);
     }

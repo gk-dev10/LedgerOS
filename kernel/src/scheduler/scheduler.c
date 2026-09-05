@@ -45,7 +45,8 @@ static void worker_task_alpha(void) {
     for (int i = 1; i <= 3; i++) {
         console_printf("[WORKER ALPHA] Processing trading signal batch #%d...\n", i);
         uint64_t start = timer_get_ticks();
-        while (timer_get_ticks() - start < 50) { // delay 0.5s
+        uint64_t timeout = 0;
+        while (timer_get_ticks() - start < 30 && timeout++ < 30000000) {
             asm volatile("pause");
         }
     }
@@ -56,7 +57,8 @@ static void worker_task_beta(void) {
     for (int i = 1; i <= 3; i++) {
         console_printf("[WORKER BETA] Validating order book depth #%d...\n", i);
         uint64_t start = timer_get_ticks();
-        while (timer_get_ticks() - start < 50) { // delay 0.5s
+        uint64_t timeout = 0;
+        while (timer_get_ticks() - start < 30 && timeout++ < 30000000) {
             asm volatile("pause");
         }
     }
@@ -73,7 +75,6 @@ void scheduler_start_demo(void) {
         console_printf("[SCHED] Created Task 1 (PID %u: %s)\n", p1->pid, p1->name);
         console_printf("[SCHED] Created Task 2 (PID %u: %s)\n", p2->pid, p2->name);
         
-        // Execute worker tasks sequentially/round-robin demo
         worker_task_alpha();
         worker_task_beta();
 

@@ -222,12 +222,31 @@ void console_printf(const char *fmt, ...) {
 
 void console_draw_cursor(bool show) {
     const framebuffer_t *fb = framebuffer_get();
-    if (!fb || !fb->address) return;
+
+    if (!fb || !fb->address) {
+        return;
+    }
+
+    if (cursor_x + CONSOLE_FONT_WIDTH > fb->width ||
+        cursor_y + CONSOLE_FONT_HEIGHT > fb->height) {
+        return;
+    }
 
     uint32_t color = show ? foreground : background;
-    for (uint64_t row = CONSOLE_FONT_HEIGHT - 2; row < CONSOLE_FONT_HEIGHT; row++) {
-        for (uint64_t col = 0; col < CONSOLE_FONT_WIDTH; col++) {
-            framebuffer_put_pixel(cursor_x + col, cursor_y + row, color);
+
+    for (uint64_t row = CONSOLE_FONT_HEIGHT - 2;
+         row < CONSOLE_FONT_HEIGHT;
+         row++) {
+
+        for (uint64_t col = 0;
+             col < CONSOLE_FONT_WIDTH;
+             col++) {
+
+            framebuffer_put_pixel(
+                cursor_x + col,
+                cursor_y + row,
+                color
+            );
         }
     }
 }
