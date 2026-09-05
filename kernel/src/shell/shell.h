@@ -3,5 +3,6 @@
 
 void shell_init(void);
 void shell_update(void);
+void shell_execute(const char *cmd);
 
 #endif

@@ -13,10 +13,6 @@
 #include "drivers/keyboard.h"
 #include "shell/shell.h"
 
-// Set the base revision to 6, this is recommended as this is the latest
-// base revision described by the Limine boot protocol specification.
-// See specification for further info.
-
 __attribute__((used, section(".limine_requests")))
 static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(6);
 
@@ -34,7 +30,7 @@ static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARK
 
 static void hcf(void) {
     for (;;) {
-        asm ("hlt");
+        asm volatile ("hlt");
     }
 }
 
@@ -87,10 +83,22 @@ void kmain(void) {
 
     interrupts_enable();
 
+    // Auto-run OS Concept Demos immediately on bootup
+    console_write("=========================================\n");
+    console_write("  LEDGEROS CORE OS CONCEPT DEMONSTRATION\n");
+    console_write("=========================================\n");
+    shell_execute("info");
+    shell_execute("mem");
+    shell_execute("ps");
+    shell_execute("sched");
+    shell_execute("ipc");
+    console_write("-----------------------------------------\n");
+    console_write("Demonstration complete. Interactive shell ready.\n\n");
+
     shell_init();
 
+    // Continuous polling loop without hlt for instant input response
     for (;;) {
         shell_update();
-        asm ("hlt");
     }
 }
