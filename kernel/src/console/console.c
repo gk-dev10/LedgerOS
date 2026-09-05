@@ -42,7 +42,7 @@ static void console_draw_char(
         uint8_t line = font8x8_basic[uc][row];
 
         for (uint64_t col = 0; col < CONSOLE_FONT_WIDTH; col++) {
-            uint32_t color = (line & (1 << col)) ? foreground : background;
+            uint32_t color = (line & (1 << (7 - col))) ? foreground : background;
 
             framebuffer_put_pixel(
                 x + col,
