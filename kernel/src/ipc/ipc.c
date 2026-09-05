@@ -11,12 +11,21 @@ static uint32_t ipc_tail = 0;
 static uint32_t ipc_count = 0;
 static spinlock_t ipc_lock;
 
+// Simple Pseudo-Random Number Generator
+static uint32_t prng_seed = 123456789;
+
+static uint32_t prng_next(void) {
+    prng_seed = prng_seed * 1103515245 + 12345 + (uint32_t)timer_get_ticks();
+    return (prng_seed / 65536) % 32768;
+}
+
 void ipc_init(void) {
     spinlock_init(&ipc_lock);
     ipc_head = 0;
     ipc_tail = 0;
     ipc_count = 0;
     memset(ipc_queue, 0, sizeof(ipc_queue));
+    prng_seed = (uint32_t)(timer_get_ticks() + 987654);
 }
 
 bool ipc_send(uint32_t receiver_pid, uint32_t type, const char *payload) {
@@ -66,26 +75,48 @@ bool ipc_receive(ipc_message_t *msg) {
 }
 
 void ipc_start_demo(void) {
-    console_write("\n--- Starting LedgerOS IPC & Synchronization Demo ---\n");
+    console_write("\n--- Starting Dynamic Live Market Feed & IPC Demo ---\n");
+
+    const char *tickers[] = {"AAPL", "NVDA", "TSLA", "BTC", "ETH", "GOOGL"};
     
-    console_write("[PRODUCER Feed] Pushing price tick: 'AAPL @ $189.45' into IPC Mailbox...\n");
-    ipc_send(2, 100, "AAPL: $189.45 (BUY SIGNAL)");
-    
-    console_write("[PRODUCER Feed] Pushing price tick: 'NVDA @ $512.80' into IPC Mailbox...\n");
-    ipc_send(2, 101, "NVDA: $512.80 (ALERT HIGH)");
+    for (int i = 0; i < 3; i++) {
+        uint32_t r = prng_next();
+        const char *t = tickers[r % 6];
+        uint32_t price = 100 + (r % 500);
+        uint32_t cents = (r * 17) % 99;
 
-    console_write("[PRODUCER Feed] Pushing price tick: 'TSLA @ $238.10' into IPC Mailbox...\n\n");
-    ipc_send(2, 102, "TSLA: $238.10 (NORMAL)");
+        char buf[64];
+        // Format string manually
+        buf[0] = t[0]; buf[1] = t[1]; buf[2] = t[2]; buf[3] = t[3] ? t[3] : '\0';
+        size_t pos = t[3] ? 4 : 3;
+        buf[pos++] = ':'; buf[pos++] = ' '; buf[pos++] = '$';
+        
+        // append price
+        char pnum[16];
+        int pi = 0;
+        uint32_t tmp = price;
+        if (tmp == 0) pnum[pi++] = '0';
+        while (tmp > 0) { pnum[pi++] = '0' + (tmp % 10); tmp /= 10; }
+        while (pi > 0) buf[pos++] = pnum[--pi];
 
-    console_write("[CONSUMER Alert] Reading messages from IPC Mailbox:\n");
+        buf[pos++] = '.';
+        buf[pos++] = '0' + (cents / 10);
+        buf[pos++] = '0' + (cents % 10);
+        buf[pos] = '\0';
 
-    ipc_message_t msg;
-    int msg_count = 0;
-    while (ipc_receive(&msg)) {
-        msg_count++;
-        console_printf("  <- MSG #%d [From PID %u -> PID %u | Type %u]: %s\n",
-            msg_count, msg.sender_pid, msg.receiver_pid, msg.type, msg.payload);
+        console_printf("[PRODUCER] Generated Live Tick -> IPC Mailbox: '%s'\n", buf);
+        ipc_send(2, 100 + i, buf);
     }
 
-    console_write("\n[IPC] Synchronization and ring-buffer transmission complete.\n\n");
+    console_write("\n[CONSUMER Alert Process] Draining IPC Mailbox via Spinlocks:\n");
+
+    ipc_message_t msg;
+    int count = 0;
+    while (ipc_receive(&msg)) {
+        count++;
+        console_printf("  <- MSG #%d [Sender PID %u -> Receiver PID %u | Type %u]: %s\n",
+            count, msg.sender_pid, msg.receiver_pid, msg.type, msg.payload);
+    }
+
+    console_write("\n[IPC] Dynamic message passing demonstration finished.\n\n");
 }
