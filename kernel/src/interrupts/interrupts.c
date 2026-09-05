@@ -51,6 +51,8 @@ __attribute__((interrupt)) static void isr_default_exception(struct interrupt_fr
 
 __attribute__((interrupt)) static void isr_default(struct interrupt_frame *frame) {
     (void)frame;
+    outb(0x20, 0x20);
+    outb(0xA0, 0x20);
 }
 
 static void pic_remap(void) {

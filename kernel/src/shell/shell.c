@@ -88,6 +88,8 @@ static void shell_execute(const char *cmd) {
 }
 
 static bool last_cursor_state = false;
+static bool auto_demo_done = false;
+static uint64_t start_ticks = 0;
 
 void shell_init(void) {
     cmd_len = 0;
@@ -95,13 +97,34 @@ void shell_init(void) {
     shell_prompt();
     console_draw_cursor(true);
     last_cursor_state = true;
+    auto_demo_done = false;
+    start_ticks = timer_get_ticks();
 }
 
 void shell_update(void) {
     bool has_typed = false;
 
+    // Auto-Demo trigger after ~2.5s idle
+    if (!auto_demo_done && (timer_get_ticks() - start_ticks > 250)) {
+        auto_demo_done = true;
+        console_draw_cursor(false);
+        console_write("\n\n[AUTO-DEMO] Demonstrating LedgerOS Core OS Concepts...\n");
+        
+        shell_execute("info");
+        shell_execute("mem");
+        shell_execute("ps");
+        shell_execute("sched");
+        shell_execute("ipc");
+
+        console_write("[AUTO-DEMO COMPLETE] LedgerOS is ready for interactive input.\n\n");
+        shell_prompt();
+        console_draw_cursor(true);
+    }
+
     while (keyboard_has_char()) {
         char c = keyboard_getchar();
+        auto_demo_done = true; // User interacted, disable auto-demo
+
         if (!has_typed) {
             console_draw_cursor(false);
             has_typed = true;

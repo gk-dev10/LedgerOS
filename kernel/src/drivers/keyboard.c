@@ -59,20 +59,6 @@ __attribute__((interrupt)) static void isr_keyboard(struct interrupt_frame *fram
     outb(0x20, 0x20); // Send EOI to PIC master
 }
 
-static void ps2_wait_write(void) {
-    int timeout = 100000;
-    while ((inb(0x64) & 0x02) && --timeout) {
-        asm volatile("pause");
-    }
-}
-
-static void ps2_wait_read(void) {
-    int timeout = 100000;
-    while (!(inb(0x64) & 0x01) && --timeout) {
-        asm volatile("pause");
-    }
-}
-
 void keyboard_init(void) {
     kbd_head = 0;
     kbd_tail = 0;
@@ -85,20 +71,6 @@ void keyboard_init(void) {
 
     // Set vector 33 (IRQ1) to keyboard ISR
     idt_set_descriptor(33, isr_keyboard, 0x8E);
-
-    // Enable Keyboard IRQ1 on i8042 controller command byte
-    ps2_wait_write();
-    outb(0x64, 0x20); // Read Controller Command Byte
-    ps2_wait_read();
-    uint8_t status = inb(0x60);
-
-    status |= 0x01;  // Enable IRQ1 interrupt (bit 0)
-    status &= ~0x10; // Enable Keyboard Clock (clear bit 4)
-
-    ps2_wait_write();
-    outb(0x64, 0x60); // Write Controller Command Byte
-    ps2_wait_write();
-    outb(0x60, status);
 
     // Unmask IRQ1 (bit 1) on Master PIC
     uint8_t mask = inb(0x21);
