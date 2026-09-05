@@ -1,4 +1,5 @@
 #include "keyboard.h"
+#include "serial.h"
 #include "../interrupts/interrupts.h"
 #include "../arch/x86_64/io.h"
 
@@ -105,7 +106,9 @@ void keyboard_init(void) {
 }
 
 bool keyboard_has_char(void) {
-    // Poll hardware PS/2 buffer as fallback to guarantee key capture
+    if (serial_has_char()) {
+        return true;
+    }
     while (inb(0x64) & 0x01) {
         uint8_t scancode = inb(0x60);
         process_scancode(scancode);
@@ -114,7 +117,10 @@ bool keyboard_has_char(void) {
 }
 
 char keyboard_getchar(void) {
-    if (!keyboard_has_char()) {
+    if (serial_has_char()) {
+        return serial_getchar();
+    }
+    if (kbd_head == kbd_tail) {
         return 0;
     }
     char c = kbd_buffer[kbd_tail];

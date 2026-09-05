@@ -1,5 +1,6 @@
 #include "console.h"
 #include "../drivers/framebuffer.h"
+#include "../drivers/serial.h"
 #include "font8x8.h"
 #include <stdarg.h>
 #include <stdbool.h>
@@ -81,6 +82,7 @@ void console_set_color(
 }
 
 void console_putc(char c) {
+    serial_putc(c);
     const framebuffer_t *fb = framebuffer_get();
 
     if (c == '\n') {

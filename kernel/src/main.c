@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <limine.h>
 #include "drivers/framebuffer.h"
+#include "drivers/serial.h"
 #include "console/console.h"
 #include "interrupts/interrupts.h"
 #include "timer/timer.h"
@@ -57,6 +58,7 @@ void kmain(void) {
     );
 
     console_init();
+    serial_init();
     console_clear();
     console_write("=========================================\n");
     console_write("              LEDGEROS\n");
