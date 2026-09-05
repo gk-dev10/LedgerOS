@@ -38,10 +38,10 @@ static void print_splash_screen(void) {
     console_set_color(0x0000FFFF, 0x00101018); // Cyan Accent
     console_write("  _           _                 ___  ____  \n");
     console_write(" | |    ___ _| | __ _  ___ _ __/ _ \\/ ___| \n");
-    console_write(" | |   / _ \\ _ |/ _` |/ _ \\ '__| | | \\___ \\ \n");
+    console_write(" | |   / _ `/ _`/ _` |/ _ \\ '__| | | \\___ \\\n");
     console_write(" | |__|  __/ (_| (_| |  __/ |  | |_| |___) |\n");
     console_write(" |_____\\___|\\__,_|\\__, |\\___|_|   \\___/____/ \n");
-    console_write("                  |___/                      \n");
+    console_write("                  |___/                     \n");
     console_set_color(0x00FFFFFF, 0x00101018); // White
     console_write("=====================================================\n");
     console_write("    LedgerOS x86-64 Bootable Operating System v1.0   \n");
