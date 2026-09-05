@@ -8,6 +8,7 @@
 #include "timer/timer.h"
 #include "memory/heap.h"
 #include "scheduler/scheduler.h"
+#include "ipc/ipc.h"
 #include "drivers/keyboard.h"
 #include "shell/shell.h"
 
@@ -72,6 +73,9 @@ void kmain(void) {
 
     scheduler_init();
     console_write("[ OK ] Process Control & CPU Scheduler initialized\n");
+
+    ipc_init();
+    console_write("[ OK ] IPC Ring-Buffer & Spinlock subsystem initialized\n");
 
     timer_init(100); // 100 Hz
     console_write("[ OK ] Timer initialized\n");

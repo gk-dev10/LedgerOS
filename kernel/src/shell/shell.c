@@ -5,6 +5,7 @@
 #include "../memory.h"
 #include "../memory/heap.h"
 #include "../scheduler/scheduler.h"
+#include "../ipc/ipc.h"
 #include "../arch/x86_64/io.h"
 
 #define CMD_BUFFER_SIZE 128
@@ -71,7 +72,7 @@ static void shell_execute(const char *cmd) {
     } else if (memcmp(cmd, "sched", 5) == 0 && (cmd[5] == '\0' || cmd[5] == ' ')) {
         scheduler_start_demo();
     } else if (memcmp(cmd, "ipc", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
-        console_write("\n[IPC] Ring-Buffer IPC Mailbox ready.\n\n");
+        ipc_start_demo();
     } else if (memcmp(cmd, "reboot", 6) == 0 && (cmd[6] == '\0' || cmd[6] == ' ')) {
         console_write("\n[SYS] Rebooting system...\n");
         uint8_t good = 0x02;
