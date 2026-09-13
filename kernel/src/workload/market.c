@@ -5,6 +5,7 @@
 #include "../console/console.h"
 #include "../timer/timer.h"
 #include "../sync/mutex.h"
+#include "../gui/gui.h"
 
 static bool market_running = false;
 static pcb_t *producer_pcb = NULL;
@@ -43,6 +44,9 @@ static void market_feed_producer_task(void) {
         uint32_t msg_type = is_volatility_spike ? 999 : 100; // Type 999 = Urgent Alert
         console_printf("[FEED PRODUCER] Emitting Market Tick #%u: '%s'\n", seq, payload);
         
+        // Push price update to GUI real-time chart ring buffer
+        gui_update_price(t, price);
+
         ipc_send_blocking(2, msg_type, payload);
         seq++;
 

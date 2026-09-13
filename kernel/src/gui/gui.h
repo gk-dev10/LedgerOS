@@ -8,5 +8,6 @@
 void gui_init(void);
 void gui_render_dashboard(void);
 void gui_update_price(const char *ticker, uint32_t price);
+void gui_run_live_mode(void);
 
 #endif

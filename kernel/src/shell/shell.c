@@ -48,7 +48,7 @@ void shell_execute(const char *cmd) {
         console_write("  help                 - Show this help manual\n");
         console_write("  info                 - Display OS kernel version & uptime\n");
         console_write("  clear                - Clear the graphical screen\n");
-        console_write("  gui                  - Render graphical OS dashboard (LedgerGUI)\n");
+        console_write("  gui                  - Launch live real-time OS graphical dashboard\n");
         console_write("  mem                  - Display kernel memory & heap state\n");
         console_write("  vmm stats            - Display physical & virtual page memory stats\n");
         console_write("  ps                   - Display active kernel processes & PCBs\n");
@@ -72,7 +72,7 @@ void shell_execute(const char *cmd) {
         console_write("              LEDGEROS SHELL\n");
         console_write("=========================================\n\n");
     } else if (memcmp(cmd, "gui", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
-        gui_render_dashboard();
+        gui_run_live_mode();
     } else if (memcmp(cmd, "mem", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
         size_t total = 0, used = 0, free_b = 0;
         heap_get_stats(&total, &used, &free_b);
