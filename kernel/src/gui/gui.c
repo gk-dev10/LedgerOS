@@ -259,9 +259,16 @@ void gui_render_dashboard(void) {
 }
 
 void gui_run_live_mode(void) {
-    console_write("\n[GUI] Launching Live Dashboard Mode. Press any key to exit...\n");
+    // Flush any leftover key in keyboard buffer (like the Enter key pressed when typing "gui")
+    while (keyboard_has_char()) {
+        (void)keyboard_getchar();
+    }
 
-    uint64_t last_draw_ticks = 0;
+    // Immediately render dashboard frame on entry
+    gui_render_dashboard();
+
+    uint64_t start_time = timer_get_ticks();
+    uint64_t last_draw_ticks = start_time;
 
     for (;;) {
         uint64_t current_ticks = timer_get_ticks();
@@ -270,7 +277,8 @@ void gui_run_live_mode(void) {
             gui_render_dashboard();
         }
 
-        if (keyboard_has_char()) {
+        // Only exit on keypress after 50 ticks (500ms safety window)
+        if (current_ticks - start_time > 50 && keyboard_has_char()) {
             (void)keyboard_getchar();
             console_clear();
             console_write("=========================================\n");
