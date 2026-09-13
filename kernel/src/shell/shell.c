@@ -4,8 +4,13 @@
 #include "../timer/timer.h"
 #include "../memory.h"
 #include "../memory/heap.h"
+#include "../memory/pmm.h"
+#include "../memory/vmm.h"
 #include "../scheduler/scheduler.h"
 #include "../ipc/ipc.h"
+#include "../workload/market.h"
+#include "../fs/ledgerfs.h"
+#include "../gui/gui.h"
 #include "../arch/x86_64/io.h"
 
 #define CMD_BUFFER_SIZE 128
@@ -30,7 +35,9 @@ static int shell_atoi(const char *str) {
 }
 
 static void dummy_process_entry(void) {
-    // Idle placeholder for dynamically spawned processes
+    for (;;) {
+        asm volatile ("hlt");
+    }
 }
 
 void shell_execute(const char *cmd) {
@@ -41,10 +48,15 @@ void shell_execute(const char *cmd) {
         console_write("  help                 - Show this help manual\n");
         console_write("  info                 - Display OS kernel version & uptime\n");
         console_write("  clear                - Clear the graphical screen\n");
+        console_write("  gui                  - Render graphical OS dashboard (LedgerGUI)\n");
         console_write("  mem                  - Display kernel memory & heap state\n");
+        console_write("  vmm stats            - Display physical & virtual page memory stats\n");
         console_write("  ps                   - Display active kernel processes & PCBs\n");
         console_write("  sched                - Trigger CPU Scheduler demo\n");
         console_write("  ipc                  - Trigger Inter-Process Communication demo\n");
+        console_write("  market start         - Start autonomous 4-process IPC market workload\n");
+        console_write("  market stop          - Stop market workload pipeline\n");
+        console_write("  log view             - Display audit records from LedgerFS ramdisk\n");
         console_write("  spawn <name>         - Dynamically create a new PCB process\n");
         console_write("  alloc <bytes>        - Dynamically allocate memory from 4MB heap\n");
         console_write("  msg <ticker> <price> - Send custom live market message to IPC mailbox\n");
@@ -59,6 +71,8 @@ void shell_execute(const char *cmd) {
         console_write("=========================================\n");
         console_write("              LEDGEROS SHELL\n");
         console_write("=========================================\n\n");
+    } else if (memcmp(cmd, "gui", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
+        gui_render_dashboard();
     } else if (memcmp(cmd, "mem", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
         size_t total = 0, used = 0, free_b = 0;
         heap_get_stats(&total, &used, &free_b);
@@ -66,6 +80,13 @@ void shell_execute(const char *cmd) {
         console_printf("  Total Heap Size : %u KB (%u bytes)\n", (uint32_t)(total / 1024), (uint32_t)total);
         console_printf("  Used Memory     : %u KB (%u bytes)\n", (uint32_t)(used / 1024), (uint32_t)used);
         console_printf("  Free Memory     : %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
+    } else if (memcmp(cmd, "vmm stats", 9) == 0 && (cmd[9] == '\0' || cmd[9] == ' ')) {
+        size_t total_p = 0, used_p = 0, free_p = 0;
+        pmm_get_stats(&total_p, &used_p, &free_p);
+        console_write("\n--- LedgerOS Physical Frame Allocator (PMM) Stats ---\n");
+        console_printf("  Total 4KB Frames : %u (%u KB)\n", (uint32_t)total_p, (uint32_t)(total_p * 4));
+        console_printf("  Used Frames      : %u (%u KB)\n", (uint32_t)used_p, (uint32_t)(used_p * 4));
+        console_printf("  Free Frames      : %u (%u KB)\n\n", (uint32_t)free_p, (uint32_t)(free_p * 4));
     } else if (memcmp(cmd, "ps", 2) == 0 && (cmd[2] == '\0' || cmd[2] == ' ')) {
         pcb_t *plist = NULL;
         size_t total_count = process_get_all(&plist);
@@ -90,6 +111,21 @@ void shell_execute(const char *cmd) {
         scheduler_start_demo();
     } else if (memcmp(cmd, "ipc", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
         ipc_start_demo();
+    } else if (memcmp(cmd, "market start", 12) == 0 && (cmd[12] == '\0' || cmd[12] == ' ')) {
+        market_start_workload();
+    } else if (memcmp(cmd, "market stop", 11) == 0 && (cmd[11] == '\0' || cmd[11] == ' ')) {
+        market_stop_workload();
+    } else if (memcmp(cmd, "log view", 8) == 0 && (cmd[8] == '\0' || cmd[8] == ' ')) {
+        char buf[1024];
+        size_t count = ledgerfs_read_logs(buf, sizeof(buf));
+        console_write("\n--- LedgerFS Audit Log View (/var/log/market.log) ---\n");
+        console_printf("Total Audit Records: %u\n", (uint32_t)count);
+        if (count > 0) {
+            console_write(buf);
+        } else {
+            console_write("  [No log entries recorded yet]\n");
+        }
+        console_write("\n");
     } else if (memcmp(cmd, "spawn ", 6) == 0) {
         const char *pname = cmd + 6;
         while (*pname == ' ') pname++;

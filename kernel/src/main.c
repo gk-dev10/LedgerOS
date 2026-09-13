@@ -8,8 +8,14 @@
 #include "interrupts/interrupts.h"
 #include "timer/timer.h"
 #include "memory/heap.h"
+#include "memory/pmm.h"
+#include "memory/vmm.h"
 #include "scheduler/scheduler.h"
 #include "ipc/ipc.h"
+#include "syscall/syscall.h"
+#include "fs/ledgerfs.h"
+#include "gui/gui.h"
+#include "workload/market.h"
 #include "drivers/keyboard.h"
 #include "shell/shell.h"
 
@@ -46,7 +52,7 @@ static void print_splash_screen(void) {
     console_write("=====================================================\n");
     console_write("    LedgerOS x86-64 Bootable Operating System v1.0   \n");
     console_write("=====================================================\n\n");
-    console_write("  [BOOT] Kernel & Subsystems Initialized Successfully.\n");
+    console_write("  [BOOT] Preemptive Scheduler & Workload Initialized.\n");
     console_write("  [INFO] Type 'help' to view available OS commands.\n\n");
 }
 
@@ -75,9 +81,15 @@ void kmain(void) {
 
     interrupts_init();
     heap_init();
+    pmm_init();
+    vmm_init();
+    syscall_init();
+    ledgerfs_init();
+    gui_init();
     scheduler_init();
     ipc_init();
-    timer_init(100); // 100 Hz
+    market_init();
+    timer_init(100); // 100 Hz timer
     keyboard_init();
     interrupts_enable();
 
