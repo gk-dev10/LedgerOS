@@ -2,29 +2,69 @@
 #include "../memory/heap.h"
 #include "../memory.h"
 #include "../console/console.h"
+#include "../scheduler/scheduler.h"
 
 static pcb_t process_table[MAX_PROCESSES];
-static uint32_t current_pid = 0;
+static pcb_t *current_pcb = NULL;
 static uint32_t next_pid = 1;
+
+static void idle_process_entry(void) {
+    for (;;) {
+        asm volatile ("hlt");
+    }
+}
+
+static void process_wrapper(void) {
+    pcb_t *curr = process_get_current();
+    if (curr && curr->entry_point) {
+        curr->entry_point();
+    }
+    
+    if (curr) {
+        curr->state = PROCESS_TERMINATED;
+        console_printf("[PROC] Process '%s' (PID %u) terminated.\n", curr->name, curr->pid);
+    }
+    
+    scheduler_yield();
+    for (;;) {
+        asm volatile ("hlt");
+    }
+}
 
 void process_init(void) {
     memset(process_table, 0, sizeof(process_table));
 
-    // Initialize Main Kernel Process (PID 0)
-    pcb_t *main_pcb = &process_table[0];
-    main_pcb->pid = 0;
-    memcpy(main_pcb->name, "Kernel Main", 12);
-    main_pcb->state = PROCESS_RUNNING;
-    main_pcb->priority = 10;
-    main_pcb->cpu_ticks = 0;
-    main_pcb->stack = NULL;
-    main_pcb->rsp = 0;
+    // Initialize Idle Process (PID 0)
+    pcb_t *idle_pcb = &process_table[0];
+    idle_pcb->pid = 0;
+    memcpy(idle_pcb->name, "Idle Process", 13);
+    idle_pcb->state = PROCESS_READY;
+    idle_pcb->priority = 0; // Lowest priority
+    idle_pcb->cpu_ticks = 0;
+    idle_pcb->entry_point = idle_process_entry;
+    idle_pcb->stack = kmalloc(KERNEL_STACK_SIZE);
 
-    current_pid = 0;
+    if (idle_pcb->stack) {
+        uint64_t *stack_top = (uint64_t *)((uint8_t *)idle_pcb->stack + KERNEL_STACK_SIZE);
+        *(--stack_top) = (uint64_t)process_wrapper; // Return address
+        for (int i = 0; i < 6; i++) {
+            *(--stack_top) = 0; // r15, r14, r13, r12, rbp, rbx
+        }
+        idle_pcb->rsp = (uint64_t)stack_top;
+    }
+
+    current_pcb = &process_table[0];
+    current_pcb->state = PROCESS_RUNNING;
 }
 
 pcb_t *process_get_current(void) {
-    return &process_table[current_pid];
+    return current_pcb;
+}
+
+void process_set_current(pcb_t *proc) {
+    if (proc) {
+        current_pcb = proc;
+    }
 }
 
 pcb_t *process_get_by_id(uint32_t pid) {
@@ -43,20 +83,9 @@ size_t process_get_all(pcb_t **process_list) {
     return MAX_PROCESSES;
 }
 
-static void process_wrapper(void (*entry)(void)) {
-    if (entry) {
-        entry();
-    }
-    pcb_t *curr = process_get_current();
-    curr->state = PROCESS_TERMINATED;
-    for (;;) {
-        asm volatile ("hlt");
-    }
-}
-
 pcb_t *process_create(const char *name, void (*entry_point)(void), uint32_t priority) {
     int slot = -1;
-    for (int i = 0; i < MAX_PROCESSES; i++) {
+    for (int i = 1; i < MAX_PROCESSES; i++) {
         if (process_table[i].state == PROCESS_UNUSED || process_table[i].state == PROCESS_TERMINATED) {
             slot = i;
             break;
@@ -73,13 +102,14 @@ pcb_t *process_create(const char *name, void (*entry_point)(void), uint32_t prio
     pcb->pid = next_pid++;
     
     size_t name_len = 0;
-    while (name[name_len] && name_len < 31) name_len++;
-    memcpy(pcb->name, name, name_len);
+    while (name && name[name_len] && name_len < 31) name_len++;
+    if (name) memcpy(pcb->name, name, name_len);
     pcb->name[name_len] = '\0';
 
     pcb->priority = priority;
     pcb->state = PROCESS_READY;
     pcb->cpu_ticks = 0;
+    pcb->entry_point = entry_point;
     pcb->stack = kmalloc(KERNEL_STACK_SIZE);
 
     if (!pcb->stack) {
@@ -87,16 +117,14 @@ pcb_t *process_create(const char *name, void (*entry_point)(void), uint32_t prio
         return NULL;
     }
 
-    // Set up stack for context switching
+    // Set up stack frame for cpu_switch_to
     uint64_t *stack_top = (uint64_t *)((uint8_t *)pcb->stack + KERNEL_STACK_SIZE);
     
-    // Push entry point wrapper and registers
-    *(--stack_top) = (uint64_t)entry_point; // Return address for wrapper
-    *(--stack_top) = (uint64_t)process_wrapper; // RIP
-    *(--stack_top) = 0x202; // RFLAGS (Interrupts Enabled)
+    // Return address when cpu_switch_to executes 'ret'
+    *(--stack_top) = (uint64_t)process_wrapper;
     
-    // Save dummy registers (rax, rbx, rcx, rdx, rsi, rdi, rbp, r8..r15)
-    for (int r = 0; r < 14; r++) {
+    // 6 Callee-saved registers (r15, r14, r13, r12, rbp, rbx)
+    for (int r = 0; r < 6; r++) {
         *(--stack_top) = 0;
     }
 
