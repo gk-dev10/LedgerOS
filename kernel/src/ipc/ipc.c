@@ -1,5 +1,7 @@
 #include "ipc.h"
 #include "../sync/spinlock.h"
+#include "../sync/mutex.h"
+#include "../sync/semaphore.h"
 #include "../memory.h"
 #include "../console/console.h"
 #include "../process/process.h"
@@ -9,9 +11,12 @@ static ipc_message_t ipc_queue[IPC_QUEUE_CAPACITY];
 static uint32_t ipc_head = 0;
 static uint32_t ipc_tail = 0;
 static uint32_t ipc_count = 0;
-static spinlock_t ipc_lock;
 
-// Simple Pseudo-Random Number Generator
+static spinlock_t ipc_spin;
+static mutex_t ipc_mutex;
+static semaphore_t sem_items;
+static semaphore_t sem_spaces;
+
 static uint32_t prng_seed = 123456789;
 
 static uint32_t prng_next(void) {
@@ -20,7 +25,11 @@ static uint32_t prng_next(void) {
 }
 
 void ipc_init(void) {
-    spinlock_init(&ipc_lock);
+    spinlock_init(&ipc_spin);
+    mutex_init(&ipc_mutex);
+    sem_init(&sem_items, 0);
+    sem_init(&sem_spaces, IPC_QUEUE_CAPACITY);
+
     ipc_head = 0;
     ipc_tail = 0;
     ipc_count = 0;
@@ -29,10 +38,10 @@ void ipc_init(void) {
 }
 
 bool ipc_send(uint32_t receiver_pid, uint32_t type, const char *payload) {
-    spinlock_lock(&ipc_lock);
+    spinlock_lock(&ipc_spin);
 
     if (ipc_count >= IPC_QUEUE_CAPACITY) {
-        spinlock_unlock(&ipc_lock);
+        spinlock_unlock(&ipc_spin);
         return false;
     }
 
@@ -52,17 +61,17 @@ bool ipc_send(uint32_t receiver_pid, uint32_t type, const char *payload) {
     ipc_head = (ipc_head + 1) % IPC_QUEUE_CAPACITY;
     ipc_count++;
 
-    spinlock_unlock(&ipc_lock);
+    spinlock_unlock(&ipc_spin);
     return true;
 }
 
 bool ipc_receive(ipc_message_t *msg) {
     if (!msg) return false;
 
-    spinlock_lock(&ipc_lock);
+    spinlock_lock(&ipc_spin);
 
     if (ipc_count == 0) {
-        spinlock_unlock(&ipc_lock);
+        spinlock_unlock(&ipc_spin);
         return false;
     }
 
@@ -70,7 +79,47 @@ bool ipc_receive(ipc_message_t *msg) {
     ipc_tail = (ipc_tail + 1) % IPC_QUEUE_CAPACITY;
     ipc_count--;
 
-    spinlock_unlock(&ipc_lock);
+    spinlock_unlock(&ipc_spin);
+    return true;
+}
+
+bool ipc_send_blocking(uint32_t receiver_pid, uint32_t type, const char *payload) {
+    sem_wait(&sem_spaces);
+    mutex_lock(&ipc_mutex);
+
+    pcb_t *curr = process_get_current();
+    ipc_message_t *msg = &ipc_queue[ipc_head];
+    msg->sender_pid = curr ? curr->pid : 0;
+    msg->receiver_pid = receiver_pid;
+    msg->type = type;
+
+    memset(msg->payload, 0, IPC_PAYLOAD_SIZE);
+    if (payload) {
+        size_t len = 0;
+        while (payload[len] && len < IPC_PAYLOAD_SIZE - 1) len++;
+        memcpy(msg->payload, payload, len);
+    }
+
+    ipc_head = (ipc_head + 1) % IPC_QUEUE_CAPACITY;
+    ipc_count++;
+
+    mutex_unlock(&ipc_mutex);
+    sem_post(&sem_items);
+    return true;
+}
+
+bool ipc_receive_blocking(ipc_message_t *msg) {
+    if (!msg) return false;
+
+    sem_wait(&sem_items);
+    mutex_lock(&ipc_mutex);
+
+    memcpy(msg, &ipc_queue[ipc_tail], sizeof(ipc_message_t));
+    ipc_tail = (ipc_tail + 1) % IPC_QUEUE_CAPACITY;
+    ipc_count--;
+
+    mutex_unlock(&ipc_mutex);
+    sem_post(&sem_spaces);
     return true;
 }
 
@@ -86,12 +135,10 @@ void ipc_start_demo(void) {
         uint32_t cents = (r * 17) % 99;
 
         char buf[64];
-        // Format string manually
         buf[0] = t[0]; buf[1] = t[1]; buf[2] = t[2]; buf[3] = t[3] ? t[3] : '\0';
         size_t pos = t[3] ? 4 : 3;
         buf[pos++] = ':'; buf[pos++] = ' '; buf[pos++] = '$';
         
-        // append price
         char pnum[16];
         int pi = 0;
         uint32_t tmp = price;

@@ -18,6 +18,8 @@ typedef struct {
 void ipc_init(void);
 bool ipc_send(uint32_t receiver_pid, uint32_t type, const char *payload);
 bool ipc_receive(ipc_message_t *msg);
+bool ipc_send_blocking(uint32_t receiver_pid, uint32_t type, const char *payload);
+bool ipc_receive_blocking(ipc_message_t *msg);
 void ipc_start_demo(void);
 
 #endif
