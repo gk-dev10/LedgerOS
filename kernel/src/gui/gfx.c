@@ -2,6 +2,8 @@
 #include "../drivers/framebuffer.h"
 #include "../console/font8x8.h"
 
+#define GFX_FONT_SCALE 2
+
 void gfx_draw_rect(size_t x, size_t y, size_t width, size_t height, uint32_t color) {
     uint32_t fb_w = framebuffer_get_width();
     uint32_t fb_h = framebuffer_get_height();
@@ -59,10 +61,18 @@ void gfx_draw_char(size_t x, size_t y, char c, uint32_t fg, uint32_t bg) {
         uint8_t glyph_row = glyph[row];
         for (size_t col = 0; col < 8; col++) {
             bool pixel_set = (glyph_row & (1 << col)) != 0;
-            if (pixel_set) {
-                framebuffer_put_pixel(x + col, y + row, fg);
-            } else if (bg != 0xFFFFFFFF) { // 0xFFFFFFFF used as transparent flag
-                framebuffer_put_pixel(x + col, y + row, bg);
+            uint32_t color = pixel_set ? fg : bg;
+
+            if (pixel_set || bg != 0xFFFFFFFF) {
+                for (size_t dy = 0; dy < GFX_FONT_SCALE; dy++) {
+                    for (size_t dx = 0; dx < GFX_FONT_SCALE; dx++) {
+                        framebuffer_put_pixel(
+                            x + (col * GFX_FONT_SCALE) + dx,
+                            y + (row * GFX_FONT_SCALE) + dy,
+                            color
+                        );
+                    }
+                }
             }
         }
     }
@@ -74,10 +84,10 @@ void gfx_draw_string(size_t x, size_t y, const char *str, uint32_t fg, uint32_t 
     while (*str) {
         if (*str == '\n') {
             curr_x = x;
-            y += 10;
+            y += (8 * GFX_FONT_SCALE + 2);
         } else {
             gfx_draw_char(curr_x, y, *str, fg, bg);
-            curr_x += 8;
+            curr_x += (8 * GFX_FONT_SCALE);
         }
         str++;
     }

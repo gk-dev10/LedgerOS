@@ -6,8 +6,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#define CONSOLE_FONT_WIDTH   8
-#define CONSOLE_FONT_HEIGHT  8
+#define FONT_SCALE 2
+#define CONSOLE_FONT_WIDTH   (8 * FONT_SCALE)
+#define CONSOLE_FONT_HEIGHT  (8 * FONT_SCALE)
 
 #define DEFAULT_FOREGROUND   0x00FFFFFF
 #define DEFAULT_BACKGROUND   0x00101018
@@ -25,7 +26,7 @@ static void console_scroll_up(void) {
     size_t pitch_dwords = fb->pitch / 4;
     size_t copy_rows = fb->height - CONSOLE_FONT_HEIGHT;
 
-    // Shift framebuffer pixels up by CONSOLE_FONT_HEIGHT (8 pixels)
+    // Shift framebuffer pixels up by CONSOLE_FONT_HEIGHT
     memmove(
         (void *)fb->address,
         (const void *)&fb->address[CONSOLE_FONT_HEIGHT * pitch_dwords],
@@ -63,23 +64,26 @@ static void console_draw_char(
         uc = '?';
     }
 
-    for (uint64_t row = 0; row < CONSOLE_FONT_HEIGHT; row++) {
+    for (uint64_t row = 0; row < 8; row++) {
         uint8_t line = font8x8_basic[uc][row];
 
-        for (uint64_t col = 0; col < CONSOLE_FONT_WIDTH; col++) {
+        for (uint64_t col = 0; col < 8; col++) {
             uint32_t color = (line & (1 << (7 - col))) ? foreground : background;
 
-            framebuffer_put_pixel(
-                x + col,
-                y + row,
-                color
-            );
+            for (size_t dy = 0; dy < FONT_SCALE; dy++) {
+                for (size_t dx = 0; dx < FONT_SCALE; dx++) {
+                    framebuffer_put_pixel(
+                        x + (col * FONT_SCALE) + dx,
+                        y + (row * FONT_SCALE) + dy,
+                        color
+                    );
+                }
+            }
         }
     }
 }
 
 void console_init(void) {
-
     cursor_x = 0;
     cursor_y = 0;
 
@@ -90,7 +94,6 @@ void console_init(void) {
 }
 
 void console_clear(void) {
-
     framebuffer_clear(background);
 
     cursor_x = 0;
@@ -130,23 +133,18 @@ void console_putc(char c) {
 
     cursor_x += CONSOLE_FONT_WIDTH;
 
-    if (cursor_x + CONSOLE_FONT_WIDTH >=
-        fb->width) {
-
+    if (cursor_x + CONSOLE_FONT_WIDTH >= fb->width) {
         console_newline();
     }
 }
 
 void console_write(const char *text) {
-
     if (text == NULL) {
         return;
     }
 
     while (*text) {
-
         console_putc(*text);
-
         text++;
     }
 }
@@ -258,7 +256,7 @@ void console_draw_cursor(bool show) {
 
     uint32_t color = show ? foreground : background;
 
-    for (uint64_t row = CONSOLE_FONT_HEIGHT - 2;
+    for (uint64_t row = CONSOLE_FONT_HEIGHT - (2 * FONT_SCALE);
          row < CONSOLE_FONT_HEIGHT;
          row++) {
 
