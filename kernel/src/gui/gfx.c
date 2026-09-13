@@ -60,7 +60,8 @@ void gfx_draw_char(size_t x, size_t y, char c, uint32_t fg, uint32_t bg) {
     for (size_t row = 0; row < 8; row++) {
         uint8_t glyph_row = glyph[row];
         for (size_t col = 0; col < 8; col++) {
-            bool pixel_set = (glyph_row & (1 << col)) != 0;
+            // Bit 7 is leftmost pixel, Bit 0 is rightmost pixel
+            bool pixel_set = (glyph_row & (1 << (7 - col))) != 0;
             uint32_t color = pixel_set ? fg : bg;
 
             if (pixel_set || bg != 0xFFFFFFFF) {
