@@ -83,6 +83,14 @@ size_t process_get_all(pcb_t **process_list) {
     return MAX_PROCESSES;
 }
 
+bool process_set_priority(uint32_t pid, uint32_t priority) {
+    pcb_t *p = process_get_by_id(pid);
+    if (!p) return false;
+    if (priority > 10) priority = 10;
+    p->priority = priority;
+    return true;
+}
+
 pcb_t *process_create(const char *name, void (*entry_point)(void), uint32_t priority) {
     int slot = -1;
     for (int i = 1; i < MAX_PROCESSES; i++) {

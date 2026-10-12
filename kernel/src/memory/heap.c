@@ -94,3 +94,31 @@ void heap_get_stats(size_t *total, size_t *used, size_t *free_bytes) {
     if (used) *used = u;
     if (free_bytes) *free_bytes = f;
 }
+
+void heap_dump_blocks(void) {
+    console_write("\n--- Heap Block Chunks & Fragmentation Map ---\n");
+    console_write("Index  Address     Size (bytes)  Status\n");
+    console_write("-----  ----------  ------------  ------\n");
+
+    heap_block_t *curr = g_heap_start;
+    size_t idx = 0;
+    size_t free_chunks = 0;
+    size_t used_chunks = 0;
+
+    while (curr != NULL) {
+        void *payload = (void *)((uint8_t *)curr + sizeof(heap_block_t));
+        console_printf("[%2u]   0x%x  %-12u  %s\n",
+            (uint32_t)idx,
+            (uint32_t)(uintptr_t)payload,
+            (uint32_t)curr->size,
+            curr->used ? "USED" : "FREE"
+        );
+        if (curr->used) used_chunks++;
+        else free_chunks++;
+
+        idx++;
+        curr = curr->next;
+    }
+    console_printf("\nSummary: %u Chunks (%u Used, %u Free)\n\n",
+        (uint32_t)idx, (uint32_t)used_chunks, (uint32_t)free_chunks);
+}

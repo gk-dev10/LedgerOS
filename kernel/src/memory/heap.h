@@ -9,5 +9,6 @@ void heap_init(void);
 void *kmalloc(size_t size);
 void kfree(void *ptr);
 void heap_get_stats(size_t *total, size_t *used, size_t *free_bytes);
+void heap_dump_blocks(void);
 
 #endif

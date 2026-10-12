@@ -34,9 +34,40 @@ static int shell_atoi(const char *str) {
     return res;
 }
 
+static uintptr_t shell_atou_hex(const char *str) {
+    uintptr_t res = 0;
+    while (*str == ' ') str++;
+    if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) str += 2;
+    while (*str) {
+        char c = *str;
+        if (c >= '0' && c <= '9') {
+            res = (res << 4) | (uintptr_t)(c - '0');
+        } else if (c >= 'a' && c <= 'f') {
+            res = (res << 4) | (uintptr_t)(c - 'a' + 10);
+        } else if (c >= 'A' && c <= 'F') {
+            res = (res << 4) | (uintptr_t)(c - 'A' + 10);
+        } else {
+            break;
+        }
+        str++;
+    }
+    return res;
+}
+
 static void dummy_process_entry(void) {
     for (;;) {
         asm volatile ("hlt");
+    }
+}
+
+// Race condition demo shared variables
+static volatile int race_counter = 0;
+static void race_worker_without_lock(void) {
+    for (int i = 0; i < 50000; i++) {
+        // Read, modify, write without synchronization
+        int temp = race_counter;
+        for (volatile int d = 0; d < 2; d++); // Introduce slight scheduling window
+        race_counter = temp + 1;
     }
 }
 
@@ -50,6 +81,7 @@ void shell_execute(const char *cmd) {
         console_write("  clear                - Clear the graphical screen\n");
         console_write("  gui                  - Launch live real-time OS graphical dashboard\n");
         console_write("  mem                  - Display kernel memory & heap state\n");
+        console_write("  mem chunks           - Inspect heap chunks & detect memory fragmentation\n");
         console_write("  vmm stats            - Display physical & virtual page memory stats\n");
         console_write("  ps                   - Display active kernel processes & PCBs\n");
         console_write("  sched                - Trigger CPU Scheduler demo\n");
@@ -57,8 +89,12 @@ void shell_execute(const char *cmd) {
         console_write("  market start         - Start autonomous 4-process IPC market workload\n");
         console_write("  market stop          - Stop market workload pipeline\n");
         console_write("  log view             - Display audit records from LedgerFS ramdisk\n");
+        console_write("  cat <path>           - Inspect log file contents (e.g. cat /var/log/market.log)\n");
         console_write("  spawn <name>         - Dynamically create a new PCB process\n");
+        console_write("  renice <pid> <prio>  - Alter process scheduling priority (0-10) live\n");
         console_write("  alloc <bytes>        - Dynamically allocate memory from 4MB heap\n");
+        console_write("  free <hex_addr>      - Free allocated heap memory chunk & coalesce\n");
+        console_write("  race demo            - Fault injection: demonstrate unsynchronized race condition\n");
         console_write("  msg <ticker> <price> - Send custom live market message to IPC mailbox\n");
         console_write("  reboot               - Soft reboot the system\n\n");
     } else if (memcmp(cmd, "info", 4) == 0 && (cmd[4] == '\0' || cmd[4] == ' ')) {
@@ -73,6 +109,8 @@ void shell_execute(const char *cmd) {
         console_write("=========================================\n\n");
     } else if (memcmp(cmd, "gui", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
         gui_run_live_mode();
+    } else if (memcmp(cmd, "mem chunks", 10) == 0 && (cmd[10] == '\0' || cmd[10] == ' ')) {
+        heap_dump_blocks();
     } else if (memcmp(cmd, "mem", 3) == 0 && (cmd[3] == '\0' || cmd[3] == ' ')) {
         size_t total = 0, used = 0, free_b = 0;
         heap_get_stats(&total, &used, &free_b);
@@ -126,6 +164,22 @@ void shell_execute(const char *cmd) {
             console_write("  [No log entries recorded yet]\n");
         }
         console_write("\n");
+    } else if (memcmp(cmd, "cat ", 4) == 0) {
+        const char *path = cmd + 4;
+        while (*path == ' ') path++;
+        if (memcmp(path, "/var/log/market.log", 19) == 0 || memcmp(path, "market.log", 10) == 0) {
+            char buf[1024];
+            size_t count = ledgerfs_read_logs(buf, sizeof(buf));
+            console_printf("\n[%s]\n", path);
+            if (count > 0) {
+                console_write(buf);
+            } else {
+                console_write("[Empty file / no logs written]\n");
+            }
+            console_write("\n");
+        } else {
+            console_printf("\n[ERR] cat: %s: No such file or directory in LedgerFS ramdisk.\nAvailable files:\n  /var/log/market.log\n\n", path);
+        }
     } else if (memcmp(cmd, "spawn ", 6) == 0) {
         const char *pname = cmd + 6;
         while (*pname == ' ') pname++;
@@ -137,6 +191,24 @@ void shell_execute(const char *cmd) {
                 console_printf("\n[SCHED] Dynamically created PCB process '%s' (PID %u)\n\n", p->name, p->pid);
             } else {
                 console_write("\n[ERR] PCB table full (max 16 processes).\n\n");
+            }
+        }
+    } else if (memcmp(cmd, "renice ", 7) == 0) {
+        const char *p = cmd + 7;
+        while (*p == ' ') p++;
+        int pid = shell_atoi(p);
+        while (*p && *p != ' ') p++;
+        while (*p == ' ') p++;
+        int prio = shell_atoi(p);
+
+        if (pid < 0 || prio < 0) {
+            console_write("[ERR] Usage: renice <pid> <priority (0-10)>\n\n");
+        } else {
+            bool ok = process_set_priority((uint32_t)pid, (uint32_t)prio);
+            if (ok) {
+                console_printf("\n[SCHED] Updated PID %d priority to %d. Run 'ps' to inspect.\n\n", pid, prio);
+            } else {
+                console_printf("\n[ERR] PID %d not found in active process table.\n\n", pid);
             }
         }
     } else if (memcmp(cmd, "alloc ", 6) == 0) {
@@ -152,6 +224,44 @@ void shell_execute(const char *cmd) {
                 console_printf("[HEAP] Free Memory Remaining: %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
             } else {
                 console_printf("\n[ERR] kmalloc failed to allocate %d bytes (out of memory).\n\n", bytes);
+            }
+        }
+    } else if (memcmp(cmd, "free ", 5) == 0) {
+        const char *addr_str = cmd + 5;
+        uintptr_t addr = shell_atou_hex(addr_str);
+        if (addr == 0) {
+            console_write("[ERR] Usage: free <hex_address> (e.g. free 0x123456)\n\n");
+        } else {
+            kfree((void *)addr);
+            console_printf("\n[HEAP] Freed memory at address 0x%x & coalesced adjacent free chunks.\n", (uint32_t)addr);
+            size_t total = 0, used = 0, free_b = 0;
+            heap_get_stats(&total, &used, &free_b);
+            console_printf("[HEAP] Free Memory Remaining: %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
+        }
+    } else if (memcmp(cmd, "race demo", 9) == 0 && (cmd[9] == '\0' || cmd[9] == ' ')) {
+        console_write("\n--- Concurrency Fault Injection: Race Condition Test ---\n");
+        console_write("[RACE] Initializing shared variable: race_counter = 0\n");
+        race_counter = 0;
+        console_write("[RACE] Spawning 2 worker threads concurrently incrementing counter 50,000 times each...\n");
+        console_write("[RACE] Expected synchronized final counter: 100000\n");
+
+        pcb_t *t1 = process_create("RaceWorker-1", race_worker_without_lock, 4);
+        pcb_t *t2 = process_create("RaceWorker-2", race_worker_without_lock, 4);
+
+        if (!t1 || !t2) {
+            console_write("[ERR] Failed to create race worker processes.\n\n");
+        } else {
+            console_write("[RACE] Executing worker threads across scheduler time slices...\n");
+            // Yield CPU across slices until workers complete
+            for (int step = 0; step < 40; step++) {
+                scheduler_yield();
+            }
+            console_printf("[RACE] Actual final counter value: %d\n", race_counter);
+            if (race_counter < 100000) {
+                console_printf("[RACE DEMO RESULT] RACE CONDITION CONFIRMED! Lost updates: %d\n", 100000 - race_counter);
+                console_write("[EXPLANATION] Without mutex/spinlock locks, concurrent read-modify-write instructions interleaved across timer interrupts, corrupting shared memory!\n\n");
+            } else {
+                console_printf("[RACE DEMO RESULT] Counter completed with value %d.\n\n", race_counter);
             }
         }
     } else if (memcmp(cmd, "msg ", 4) == 0) {

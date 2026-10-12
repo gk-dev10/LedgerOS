@@ -34,6 +34,7 @@ pcb_t *process_get_current(void);
 void process_set_current(pcb_t *proc);
 pcb_t *process_get_by_id(uint32_t pid);
 size_t process_get_all(pcb_t **process_list);
+bool process_set_priority(uint32_t pid, uint32_t priority);
 
 /* Assembly subroutine in switch.S */
 extern void cpu_switch_to(uint64_t *old_rsp, uint64_t new_rsp);
