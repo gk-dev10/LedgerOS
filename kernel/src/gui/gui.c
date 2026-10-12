@@ -2,6 +2,7 @@
 #include "gfx.h"
 #include "../drivers/framebuffer.h"
 #include "../drivers/keyboard.h"
+#include "../drivers/serial.h"
 #include "../process/process.h"
 #include "../scheduler/scheduler.h"
 #include "../memory/heap.h"
@@ -84,6 +85,7 @@ void gui_render_dashboard(void) {
     render_number(uptime_str, &up_pos, secs);
     uptime_str[up_pos++] = 's'; uptime_str[up_pos] = '\0';
 
+    gfx_draw_string(fb_w - 480, 10, "[Press ESC or 'q' to Exit]", 0x00FFBB00, 0xFFFFFFFF);
     gfx_draw_string(fb_w - 180, 10, uptime_str, 0x0000FF00, 0xFFFFFFFF);
     gfx_draw_rect_outline(0, 0, fb_w, 36, 0x0000FFFF);
 
@@ -259,9 +261,12 @@ void gui_render_dashboard(void) {
 }
 
 void gui_run_live_mode(void) {
-    // Flush any leftover key in keyboard buffer (like the Enter key pressed when typing "gui")
+    // Flush any leftover key in keyboard and serial buffers (e.g. Enter pressed to launch gui)
     while (keyboard_has_char()) {
         (void)keyboard_getchar();
+    }
+    while (serial_has_char()) {
+        (void)serial_getchar();
     }
 
     // Immediately render dashboard frame on entry
@@ -277,14 +282,32 @@ void gui_run_live_mode(void) {
             gui_render_dashboard();
         }
 
-        // Only exit on keypress after 50 ticks (500ms safety window)
-        if (current_ticks - start_time > 50 && keyboard_has_char()) {
-            (void)keyboard_getchar();
-            console_clear();
-            console_write("=========================================\n");
-            console_write("              LEDGEROS SHELL\n");
-            console_write("=========================================\n\n");
-            return;
+        // Allow exit via keyboard or serial terminal
+        if (current_ticks - start_time > 15) { // 150ms debounce
+            bool should_exit = false;
+            if (keyboard_has_char()) {
+                char k = keyboard_getchar();
+                if (k == 27 || k == 'q' || k == 'Q' || k == '\n' || k == ' ') {
+                    should_exit = true;
+                }
+            }
+            if (serial_has_char()) {
+                char s = serial_getchar();
+                if (s == 27 || s == 'q' || s == 'Q' || s == '\n' || s == ' ') {
+                    should_exit = true;
+                }
+            }
+
+            if (should_exit) {
+                console_clear();
+                console_write("=========================================\n");
+                console_write("              LEDGEROS SHELL\n");
+                console_write("=========================================\n\n");
+                console_set_color(0x0000FF00, 0x00101018);
+                console_write("LedgerOS> ");
+                console_set_color(0x00FFFFFF, 0x00101018);
+                return;
+            }
         }
 
         asm volatile("pause");
