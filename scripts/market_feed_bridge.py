@@ -25,13 +25,13 @@ def get_binance_price(symbol="BTCUSDT"):
         return None
 
 def main():
-    print(f"[BRIDGE] Connecting to LedgerOS QEMU Serial at {QEMU_SERIAL_HOST}:{QEMU_SERIAL_PORT}...")
+    print(f"[BRIDGE] Connecting to LedgerOS QEMU Serial at {QEMU_SERIAL_HOST}:{QEMU_SERIAL_PORT}...", flush=True)
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((QEMU_SERIAL_HOST, QEMU_SERIAL_PORT))
-        print("[BRIDGE] Connected! Streaming live market ticks to LedgerOS...")
+        print("[BRIDGE] Connected! Streaming live market ticks to LedgerOS...", flush=True)
     except Exception as e:
-        print(f"[BRIDGE INFO] Running in standalone demonstration mode (QEMU socket not bound: {e})")
+        print(f"[BRIDGE INFO] Running in standalone demonstration mode (QEMU socket not bound: {e})", flush=True)
         sock = None
 
     idx = 0
@@ -44,12 +44,12 @@ def main():
         price = get_binance_price(sym)
         if price is not None:
             cmd = f"msg {label} {price}\n"
-            print(f"[API -> LedgerOS] {cmd.strip()}")
+            print(f"[API -> LedgerOS] {cmd.strip()}", flush=True)
             if sock:
                 try:
                     sock.sendall(cmd.encode("ascii"))
                 except Exception:
-                    print("[BRIDGE] Connection to QEMU lost.")
+                    print("[BRIDGE] Connection to QEMU lost.", flush=True)
                     break
         time.sleep(2)
         idx += 1
