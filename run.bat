@@ -1,0 +1,3 @@
+@echo off
+echo [LedgerOS] Launching via WSL...
+wsl make run
