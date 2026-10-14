@@ -18,17 +18,14 @@ bool ledgerfs_write_log(const char *entry) {
 
     spinlock_lock(&log_lock);
 
-    if (log_count >= MAX_LOG_ENTRIES) {
-        spinlock_unlock(&log_lock);
-        return false;
-    }
+    size_t slot = (log_count < MAX_LOG_ENTRIES) ? log_count : (log_count % MAX_LOG_ENTRIES);
+    log_count++;
 
     size_t len = 0;
     while (entry[len] && len < LOG_ENTRY_SIZE - 1) len++;
 
-    memcpy(log_store[log_count], entry, len);
-    log_store[log_count][len] = '\0';
-    log_count++;
+    memcpy(log_store[slot], entry, len);
+    log_store[slot][len] = '\0';
 
     spinlock_unlock(&log_lock);
     return true;
@@ -39,8 +36,9 @@ size_t ledgerfs_read_logs(char *buf, size_t max_buf_size) {
 
     spinlock_lock(&log_lock);
     size_t offset = 0;
+    size_t displayed = (log_count > MAX_LOG_ENTRIES) ? MAX_LOG_ENTRIES : log_count;
 
-    for (size_t i = 0; i < log_count; i++) {
+    for (size_t i = 0; i < displayed; i++) {
         size_t len = 0;
         while (log_store[i][len]) len++;
 

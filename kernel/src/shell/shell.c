@@ -96,6 +96,8 @@ void shell_execute(const char *cmd) {
         console_write("  alloc <bytes>        - Dynamically allocate memory from 4MB heap\n");
         console_write("  free <hex_addr>      - Free allocated heap memory chunk & coalesce\n");
         console_write("  race demo            - Fault injection: demonstrate unsynchronized race condition\n");
+        console_write("  order <buy|sell> <t> <q> <p> - Place mock order with hardware rdtsc latency\n");
+        console_write("  bench [count]        - Run order latency benchmark & Windows comparison\n");
         console_write("  msg <ticker> <price> - Send custom live market message to IPC mailbox\n");
         console_write("  reboot               - Soft reboot the system\n\n");
     } else if (memcmp(cmd, "info", 4) == 0 && (cmd[4] == '\0' || cmd[4] == ' ')) {
@@ -301,6 +303,56 @@ void shell_execute(const char *cmd) {
                 console_write("\n[ERR] IPC queue full.\n\n");
             }
         }
+    } else if (memcmp(cmd, "order ", 6) == 0) {
+        const char *p = cmd + 6;
+        while (*p == ' ') p++;
+        char side[8] = "BUY";
+        if (memcmp(p, "buy ", 4) == 0 || memcmp(p, "BUY ", 4) == 0) {
+            memcpy(side, "BUY", 4);
+            p += 4;
+        } else if (memcmp(p, "sell ", 5) == 0 || memcmp(p, "SELL ", 5) == 0) {
+            memcpy(side, "SELL", 5);
+            p += 5;
+        } else {
+            console_write("[ERR] Usage: order <buy|sell> <ticker> <qty> <price>\nExample: order buy NVDA 100 450\n\n");
+            return;
+        }
+        while (*p == ' ') p++;
+        char ticker[16]; int ti = 0;
+        while (*p && *p != ' ' && ti < 15) ticker[ti++] = *p++;
+        ticker[ti] = '\0';
+        while (*p == ' ') p++;
+        int qty = shell_atoi(p);
+        while (*p && *p != ' ') p++;
+        while (*p == ' ') p++;
+        int price = shell_atoi(p);
+
+        if (ticker[0] == '\0' || qty <= 0 || price <= 0) {
+            console_write("[ERR] Usage: order <buy|sell> <ticker> <qty> <price>\nExample: order buy NVDA 100 450\n\n");
+        } else {
+            uint64_t cycles = 0;
+            bool ok = market_execute_order(side, ticker, (uint32_t)qty, (uint32_t)price, &cycles);
+            if (ok) {
+                uint32_t ns = (uint32_t)((cycles * 10) / 28);
+                console_printf("\n[ORDER MATCHED] %s %u %s @ $%u\n", side, qty, ticker, price);
+                console_printf("[PERF] Hardware Execution Latency : %u CPU cycles (~%u nanoseconds)\n", 
+                    (uint32_t)cycles, ns);
+                console_printf("[AUDIT] Recorded in LedgerFS persistent log storage (/var/log/market.log)\n");
+                console_printf("[GUI] Price chart updated for %s.\n\n", ticker);
+            } else {
+                console_write("[ERR] Failed to execute order.\n\n");
+            }
+        }
+    } else if (memcmp(cmd, "bench", 5) == 0 && (cmd[5] == '\0' || cmd[5] == ' ')) {
+        const char *p = cmd + 5;
+        while (*p == ' ') p++;
+        if (memcmp(p, "orders", 6) == 0) {
+            p += 6;
+            while (*p == ' ') p++;
+        }
+        int count = shell_atoi(p);
+        if (count <= 0) count = 1000;
+        market_run_benchmark((uint32_t)count);
     } else if (memcmp(cmd, "reboot", 6) == 0 && (cmd[6] == '\0' || cmd[6] == ' ')) {
         console_write("\n[SYS] Rebooting system...\n");
         uint8_t good = 0x02;
