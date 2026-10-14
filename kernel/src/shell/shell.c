@@ -1,6 +1,7 @@
 #include "shell.h"
 #include "../console/console.h"
 #include "../drivers/keyboard.h"
+#include "../drivers/serial.h"
 #include "../timer/timer.h"
 #include "../memory.h"
 #include "../memory/heap.h"
@@ -272,10 +273,26 @@ void shell_execute(const char *cmd) {
         } else {
             char payload[64];
             size_t i = 0;
-            while (*args && i < sizeof(payload) - 1) {
-                payload[i++] = *args++;
+            const char *p = args;
+            while (*p && i < sizeof(payload) - 1) {
+                payload[i++] = *p++;
             }
             payload[i] = '\0';
+
+            // Extract ticker and price for real-time GUI graph updates
+            char ticker[16];
+            int ti = 0;
+            const char *tp = args;
+            while (*tp && *tp != ' ' && ti < 15) {
+                ticker[ti++] = *tp++;
+            }
+            ticker[ti] = '\0';
+            while (*tp == ' ') tp++;
+            int price = shell_atoi(tp);
+            if (price > 0) {
+                gui_update_price(ticker, (uint32_t)price);
+            }
+
             bool ok = ipc_send(2, 500, payload);
             if (ok) {
                 console_printf("\n[IPC] Message sent to ring-buffer mailbox: '%s'\n", payload);
@@ -298,6 +315,33 @@ void shell_execute(const char *cmd) {
 
 static bool last_cursor_state = false;
 
+static void shell_handle_char(char c, bool *has_typed) {
+    if (!*has_typed) {
+        console_draw_cursor(false);
+        *has_typed = true;
+    }
+
+    if (c == '\n' || c == '\r') {
+        console_putc('\n');
+        cmd_buf[cmd_len] = '\0';
+        shell_execute(cmd_buf);
+        cmd_len = 0;
+        memset(cmd_buf, 0, sizeof(cmd_buf));
+        shell_prompt();
+    } else if (c == '\b' || c == 127) {
+        if (cmd_len > 0) {
+            cmd_len--;
+            cmd_buf[cmd_len] = '\0';
+            console_putc('\b');
+        }
+    } else if (c >= 32 && c <= 126) {
+        if (cmd_len < CMD_BUFFER_SIZE - 1) {
+            cmd_buf[cmd_len++] = c;
+            console_putc(c);
+        }
+    }
+}
+
 void shell_init(void) {
     cmd_len = 0;
     memset(cmd_buf, 0, sizeof(cmd_buf));
@@ -311,31 +355,12 @@ void shell_update(void) {
 
     while (keyboard_has_char()) {
         char c = keyboard_getchar();
+        shell_handle_char(c, &has_typed);
+    }
 
-        if (!has_typed) {
-            console_draw_cursor(false);
-            has_typed = true;
-        }
-
-        if (c == '\n') {
-            console_putc('\n');
-            cmd_buf[cmd_len] = '\0';
-            shell_execute(cmd_buf);
-            cmd_len = 0;
-            memset(cmd_buf, 0, sizeof(cmd_buf));
-            shell_prompt();
-        } else if (c == '\b') {
-            if (cmd_len > 0) {
-                cmd_len--;
-                cmd_buf[cmd_len] = '\0';
-                console_putc('\b');
-            }
-        } else if (c >= 32 && c <= 126) {
-            if (cmd_len < CMD_BUFFER_SIZE - 1) {
-                cmd_buf[cmd_len++] = c;
-                console_putc(c);
-            }
-        }
+    while (serial_has_char()) {
+        char c = serial_getchar();
+        shell_handle_char(c, &has_typed);
     }
 
     // Blinking cursor toggle every ~30 ticks (300ms)
