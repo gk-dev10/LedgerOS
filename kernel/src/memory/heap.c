@@ -56,12 +56,26 @@ void *kmalloc(size_t size) {
     return NULL;
 }
 
-void kfree(void *ptr) {
+bool kfree(void *ptr) {
     if (ptr == NULL || g_heap_start == NULL) {
-        return;
+        return false;
     }
 
-    heap_block_t *block = (heap_block_t *)((uint8_t *)ptr - sizeof(heap_block_t));
+    // Validate by walking known heap headers before touching memory derived
+    // from ptr. This safely rejects arbitrary and interior pointers.
+    heap_block_t *block = g_heap_start;
+    while (block != NULL) {
+        void *payload = (void *)((uint8_t *)block + sizeof(heap_block_t));
+        if (payload == ptr) {
+            break;
+        }
+        block = block->next;
+    }
+
+    if (block == NULL || !block->used) {
+        return false;
+    }
+
     block->used = false;
 
     // Coalesce / merge adjacent free blocks
@@ -74,6 +88,7 @@ void kfree(void *ptr) {
             curr = curr->next;
         }
     }
+    return true;
 }
 
 void heap_get_stats(size_t *total, size_t *used, size_t *free_bytes) {

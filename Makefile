@@ -2,7 +2,7 @@
 .SUFFIXES:
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -m 2G -serial stdio
+QEMUFLAGS := -m 2G -serial stdio -serial tcp:127.0.0.1:4444,server,nowait
 
 override IMAGE_NAME := template
 

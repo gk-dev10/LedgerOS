@@ -313,11 +313,14 @@ void shell_execute(const char *cmd) {
         if (addr == 0) {
             console_write("[ERR] Usage: free <hex_address> (e.g. free 0x123456)\n\n");
         } else {
-            kfree((void *)addr);
-            console_printf("\n[HEAP] Freed memory at address 0x%x & coalesced adjacent free chunks.\n", (uint32_t)addr);
-            size_t total = 0, used = 0, free_b = 0;
-            heap_get_stats(&total, &used, &free_b);
-            console_printf("[HEAP] Free Memory Remaining: %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
+            if (kfree((void *)addr)) {
+                console_printf("\n[HEAP] Freed block at %p and coalesced adjacent free chunks.\n", (void *)addr);
+                size_t total = 0, used = 0, free_b = 0;
+                heap_get_stats(&total, &used, &free_b);
+                console_printf("[HEAP] Free Memory Remaining: %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
+            } else {
+                console_write("\n[ERR] Address is not a live heap allocation. Use the exact address printed by 'alloc'.\n\n");
+            }
         }
     } else if (memcmp(cmd, "race demo", 9) == 0 && (cmd[9] == '\0' || cmd[9] == ' ')) {
         const uint32_t expected = RACE_DEMO_ITERATIONS * 2;

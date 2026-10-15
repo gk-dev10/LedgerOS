@@ -1,19 +1,16 @@
 """
 LedgerOS Live Market Data Serial Bridge
-Fetches real cryptocurrency prices from Binance Public API and streams them
-into the LedgerOS QEMU serial port (COM1 / UART 16550) via TCP socket or pipe.
+Fetches cryptocurrency prices from Binance's public API and streams them
+to the LedgerOS QEMU COM2 TCP serial endpoint.
 """
 
 import time
 import urllib.request
 import json
 import socket
-import sys
 
 QEMU_SERIAL_HOST = "127.0.0.1"
 QEMU_SERIAL_PORT = 4444
-TICKERS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "NVDA", "AAPL"]
-
 def get_binance_price(symbol="BTCUSDT"):
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
@@ -24,33 +21,45 @@ def get_binance_price(symbol="BTCUSDT"):
     except Exception:
         return None
 
-def main():
-    print(f"[BRIDGE] Connecting to LedgerOS QEMU Serial at {QEMU_SERIAL_HOST}:{QEMU_SERIAL_PORT}...", flush=True)
+def connect_serial():
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((QEMU_SERIAL_HOST, QEMU_SERIAL_PORT))
-        print("[BRIDGE] Connected! Streaming live market ticks to LedgerOS...", flush=True)
-    except Exception as e:
-        print(f"[BRIDGE INFO] Running in standalone demonstration mode (QEMU socket not bound: {e})", flush=True)
-        sock = None
+        sock = socket.create_connection((QEMU_SERIAL_HOST, QEMU_SERIAL_PORT), timeout=3)
+        sock.settimeout(3)
+        print("[BRIDGE] Connected to LedgerOS COM2.", flush=True)
+        return sock
+    except OSError as e:
+        print(f"[BRIDGE] Waiting for QEMU serial socket: {e}", flush=True)
+        return None
+
+def main():
+    print(f"[BRIDGE] Binance prices -> LedgerOS COM2 ({QEMU_SERIAL_HOST}:{QEMU_SERIAL_PORT})", flush=True)
+    sock = None
+    next_connect_attempt = 0.0
 
     idx = 0
     symbols = ["BTCUSDT", "ETHUSDT"]
     labels = ["BTC", "ETH"]
 
     while True:
+        now = time.monotonic()
+        if sock is None and now >= next_connect_attempt:
+            sock = connect_serial()
+            next_connect_attempt = now + 5
+
         sym = symbols[idx % len(symbols)]
         label = labels[idx % len(labels)]
         price = get_binance_price(sym)
         if price is not None:
             cmd = f"msg {label} {price}\n"
             print(f"[API -> LedgerOS] {cmd.strip()}", flush=True)
-            if sock:
+            if sock is not None:
                 try:
                     sock.sendall(cmd.encode("ascii"))
-                except Exception:
-                    print("[BRIDGE] Connection to QEMU lost.", flush=True)
-                    break
+                except OSError as e:
+                    print(f"[BRIDGE] Connection to QEMU lost: {e}", flush=True)
+                    sock.close()
+                    sock = None
+                    next_connect_attempt = time.monotonic() + 1
         time.sleep(2)
         idx += 1
 

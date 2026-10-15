@@ -77,6 +77,7 @@ void kmain(void) {
 
     console_init();
     serial_init();
+    serial2_init();
     console_clear();
 
     interrupts_init();

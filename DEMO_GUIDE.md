@@ -117,6 +117,13 @@ gui
   4. **Live Market Price Chart**: Real-time ticker line graph plotting stock/crypto prices.
 * **To Return to Shell**: Press **`ESC`** or **`q`** (or in the QEMU terminal).
 
+#### Stream Binance prices into the dashboard
+Start QEMU with `make run`, enter `gui` in LedgerOS, then run this in a separate host terminal:
+```powershell
+python scripts/market_feed_bridge.py
+```
+The bridge fetches BTC and ETH prices from Binance and sends them over QEMU's COM2 TCP serial port (`127.0.0.1:4444`). The chart marks incoming values as **LIVE API**. If the bridge is stopped or stops sending updates, the dashboard returns to simulated prices. Keep QEMU running while the bridge is connected.
+
 ---
 
 ## 🎯 Quick Technical Viva / Question Cheatsheet

@@ -13,14 +13,19 @@
 #include "../console/console.h"
 
 #define PRICE_HISTORY_CAPACITY 30
+#define MARKET_BRIDGE_LINE_SIZE 64
 static uint32_t price_history[PRICE_HISTORY_CAPACITY];
 static size_t price_count = 0;
+static char market_bridge_line[MARKET_BRIDGE_LINE_SIZE];
+static size_t market_bridge_line_len = 0;
 
 static char last_ticker[16] = "NVDA";
 static uint32_t last_price = 350;
 static bool last_is_spike = false;
 static uint32_t demo_price = 350;
 static uint32_t demo_rng = 0x6D2B79F5;
+static bool external_price_active = false;
+static uint64_t last_external_price_tick = 0;
 
 void gui_init(void) {
     price_count = 0;
@@ -35,9 +40,12 @@ void gui_init(void) {
     last_is_spike = false;
     demo_price = 350;
     demo_rng = 0x6D2B79F5;
+    market_bridge_line_len = 0;
+    external_price_active = false;
+    last_external_price_tick = 0;
 }
 
-void gui_update_price(const char *ticker, uint32_t price) {
+static void gui_record_price(const char *ticker, uint32_t price) {
     if (ticker) {
         size_t len = 0;
         while (ticker[len] && len < 15) {
@@ -58,6 +66,74 @@ void gui_update_price(const char *ticker, uint32_t price) {
             price_history[i] = price_history[i + 1];
         }
         price_history[PRICE_HISTORY_CAPACITY - 1] = price;
+    }
+}
+
+void gui_update_price(const char *ticker, uint32_t price) {
+    // Simulated OS workload prices remain active until a fresh API tick arrives.
+    if (!external_price_active) {
+        gui_record_price(ticker, price);
+    }
+}
+
+void gui_update_external_price(const char *ticker, uint32_t price) {
+    external_price_active = true;
+    last_external_price_tick = timer_get_ticks();
+    gui_record_price(ticker, price);
+}
+
+static bool gui_parse_market_command(const char *line) {
+    if (!line || memcmp(line, "msg ", 4) != 0) {
+        return false;
+    }
+
+    const char *p = line + 4;
+    char ticker[16];
+    size_t ticker_len = 0;
+    while (*p && *p != ' ' && ticker_len < sizeof(ticker) - 1) {
+        ticker[ticker_len++] = *p++;
+    }
+    if (ticker_len == 0 || *p != ' ') {
+        return false;
+    }
+    ticker[ticker_len] = '\0';
+    while (*p == ' ') p++;
+    if (*p < '0' || *p > '9') {
+        return false;
+    }
+
+    uint32_t price = 0;
+    while (*p >= '0' && *p <= '9') {
+        uint32_t digit = (uint32_t)(*p++ - '0');
+        if (price > (UINT32_MAX - digit) / 10) {
+            return false;
+        }
+        price = price * 10 + digit;
+    }
+    while (*p == ' ') p++;
+    if (*p != '\0' || price == 0) {
+        return false;
+    }
+
+    gui_update_external_price(ticker, price);
+    return true;
+}
+
+static void gui_poll_market_bridge(void) {
+    while (serial2_has_char()) {
+        char c = serial2_getchar();
+        if (c == '\r') continue;
+
+        if (c == '\n') {
+            market_bridge_line[market_bridge_line_len] = '\0';
+            (void)gui_parse_market_command(market_bridge_line);
+            market_bridge_line_len = 0;
+        } else if (market_bridge_line_len < sizeof(market_bridge_line) - 1) {
+            market_bridge_line[market_bridge_line_len++] = c;
+        } else {
+            // Drop an overlong or malformed line and resynchronize at newline.
+            market_bridge_line_len = 0;
+        }
     }
 }
 
@@ -257,11 +333,12 @@ void gui_render_dashboard(void) {
 
     gfx_draw_string(w4_x + 16, w4_y + 195, tick_banner, 0x00FFFF00, 0xFFFFFFFF);
 
-    if (last_is_spike) {
-        gfx_draw_string(w4_x + 16, w4_y + 219, "[SPIKE ALERT]", 0x00FF0000, 0xFFFFFFFF);
-    } else {
-        gfx_draw_string(w4_x + 16, w4_y + 219, "[NORMAL]", 0x0000FF00, 0xFFFFFFFF);
-    }
+    gfx_draw_string(w4_x + 16, w4_y + 219,
+        external_price_active ? "[LIVE API]" : "[SIMULATED]",
+        external_price_active ? 0x0000FFFF : 0x00A0A0A0, 0xFFFFFFFF);
+    gfx_draw_string(w4_x + 176, w4_y + 219,
+        last_is_spike ? "[SPIKE ALERT]" : "[NORMAL]",
+        last_is_spike ? 0x00FF0000 : 0x0000FF00, 0xFFFFFFFF);
 }
 
 void gui_run_live_mode(void) {
@@ -280,10 +357,17 @@ void gui_run_live_mode(void) {
     uint64_t last_demo_tick = last_draw_ticks;
 
     for (;;) {
-        uint64_t current_ticks = timer_get_ticks();
+        gui_poll_market_bridge();
         scheduler_poll();
-        // Add a simulated price tick once per second so the chart moves on its own.
-        if (current_ticks - last_demo_tick >= 100) {
+        uint64_t current_ticks = timer_get_ticks();
+
+        // Fall back to local demo prices if the bridge stops sending updates.
+        if (external_price_active && current_ticks - last_external_price_tick >= 500) {
+            external_price_active = false;
+        }
+
+        // Simulated fallback tick once per second while no fresh API data arrives.
+        if (!external_price_active && current_ticks - last_demo_tick >= 100) {
             last_demo_tick = current_ticks;
             demo_rng ^= demo_rng << 13;
             demo_rng ^= demo_rng >> 17;

@@ -9,4 +9,8 @@ bool serial_has_char(void);
 char serial_getchar(void);
 void serial_putc(char c);
 
+void serial2_init(void);
+bool serial2_has_char(void);
+char serial2_getchar(void);
+
 #endif
