@@ -272,8 +272,7 @@ void gui_run_live_mode(void) {
     // Immediately render dashboard frame on entry
     gui_render_dashboard();
 
-    uint64_t start_time = timer_get_ticks();
-    uint64_t last_draw_ticks = start_time;
+    uint64_t last_draw_ticks = timer_get_ticks();
 
     for (;;) {
         uint64_t current_ticks = timer_get_ticks();
@@ -282,32 +281,30 @@ void gui_run_live_mode(void) {
             gui_render_dashboard();
         }
 
-        // Allow exit via keyboard or serial terminal
-        if (current_ticks - start_time > 15) { // 150ms debounce
-            bool should_exit = false;
-            if (keyboard_has_char()) {
-                char k = keyboard_getchar();
-                if (k == 27 || k == 'q' || k == 'Q' || k == '\n' || k == ' ') {
-                    should_exit = true;
-                }
+        // Read every queued key so a quick press or buffered terminal input is not missed.
+        bool should_exit = false;
+        while (keyboard_has_char()) {
+            char k = keyboard_getchar();
+            if (k == 27 || k == 'q' || k == 'Q' || k == '\n' || k == ' ') {
+                should_exit = true;
             }
-            if (serial_has_char()) {
-                char s = serial_getchar();
-                if (s == 27 || s == 'q' || s == 'Q' || s == '\n' || s == ' ') {
-                    should_exit = true;
-                }
+        }
+        while (serial_has_char()) {
+            char s = serial_getchar();
+            if (s == 27 || s == 'q' || s == 'Q' || s == '\n' || s == ' ') {
+                should_exit = true;
             }
+        }
 
-            if (should_exit) {
-                console_clear();
-                console_write("=========================================\n");
-                console_write("              LEDGEROS SHELL\n");
-                console_write("=========================================\n\n");
-                console_set_color(0x0000FF00, 0x00101018);
-                console_write("LedgerOS> ");
-                console_set_color(0x00FFFFFF, 0x00101018);
-                return;
-            }
+        if (should_exit) {
+            console_clear();
+            console_write("=========================================\n");
+            console_write("              LEDGEROS SHELL\n");
+            console_write("=========================================\n\n");
+            console_set_color(0x0000FF00, 0x00101018);
+            console_write("LedgerOS> ");
+            console_set_color(0x00FFFFFF, 0x00101018);
+            return;
         }
 
         asm volatile("pause");
