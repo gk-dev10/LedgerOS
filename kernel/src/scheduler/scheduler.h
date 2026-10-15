@@ -6,6 +6,7 @@
 void scheduler_init(void);
 void scheduler_tick(void);
 void scheduler_yield(void);
+void scheduler_poll(void);
 void scheduler_start_demo(void);
 
 #endif

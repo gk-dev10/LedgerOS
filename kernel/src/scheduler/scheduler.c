@@ -5,11 +5,13 @@
 #define SCHED_QUANTUM 5 // 5 ticks (50 ms at 100Hz)
 
 static bool scheduler_active = false;
+static volatile bool reschedule_pending = false;
 static uint32_t active_task_index = 0;
 
 void scheduler_init(void) {
     process_init();
     scheduler_active = true;
+    reschedule_pending = false;
 }
 
 static pcb_t *scheduler_pick_next(void) {
@@ -86,8 +88,17 @@ void scheduler_tick(void) {
         // Preempt task if quantum expired
         if (curr->time_slice >= SCHED_QUANTUM) {
             curr->time_slice = 0;
-            scheduler_yield();
+            // Do not context-switch inside the interrupt handler. Defer the
+            // switch until scheduler_poll() runs in normal kernel context.
+            reschedule_pending = true;
         }
+    }
+}
+
+void scheduler_poll(void) {
+    if (scheduler_active && reschedule_pending) {
+        reschedule_pending = false;
+        scheduler_yield();
     }
 }
 

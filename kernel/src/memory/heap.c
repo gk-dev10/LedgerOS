@@ -107,9 +107,10 @@ void heap_dump_blocks(void) {
 
     while (curr != NULL) {
         void *payload = (void *)((uint8_t *)curr + sizeof(heap_block_t));
-        console_printf("[%2u]   0x%x  %-12u  %s\n",
+        // console_printf supports only bare conversion specifiers (no width flags).
+        console_printf("[%u]  %p  %u  %s\n",
             (uint32_t)idx,
-            (uint32_t)(uintptr_t)payload,
+            payload,
             (uint32_t)curr->size,
             curr->used ? "USED" : "FREE"
         );

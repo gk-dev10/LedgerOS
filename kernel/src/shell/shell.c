@@ -13,11 +13,37 @@
 #include "../fs/ledgerfs.h"
 #include "../gui/gui.h"
 #include "../arch/x86_64/io.h"
+#include "../sync/spinlock.h"
 
 #define CMD_BUFFER_SIZE 128
 
 static char cmd_buf[CMD_BUFFER_SIZE];
 static uint32_t cmd_len = 0;
+
+static void shell_print_field(const char *text, size_t width) {
+    size_t len = 0;
+    while (text[len]) {
+        console_putc(text[len++]);
+    }
+    while (len++ < width) {
+        console_putc(' ');
+    }
+}
+
+static void shell_print_uint_field(uint32_t value, size_t width) {
+    char digits[11];
+    size_t len = 0;
+    do {
+        digits[len++] = '0' + (value % 10);
+        value /= 10;
+    } while (value && len < sizeof(digits));
+    for (size_t i = len; i > 0; i--) {
+        console_putc(digits[i - 1]);
+    }
+    while (len++ < width) {
+        console_putc(' ');
+    }
+}
 
 static void shell_prompt(void) {
     console_set_color(0x0000FF00, 0x00101018); // Bright Green
@@ -61,15 +87,63 @@ static void dummy_process_entry(void) {
     }
 }
 
-// Race condition demo shared variables
+// Race condition demo state. Workers explicitly yield in the vulnerable window
+// so the lost update is repeatable and visible in the classroom demonstration.
+#define RACE_DEMO_ITERATIONS 3000
+#define RACE_DEMO_REPORT_EVERY 500
 static volatile int race_counter = 0;
-static void race_worker_without_lock(void) {
-    for (int i = 0; i < 50000; i++) {
-        // Read, modify, write without synchronization
-        int temp = race_counter;
-        for (volatile int d = 0; d < 2; d++); // Introduce slight scheduling window
-        race_counter = temp + 1;
+static volatile uint32_t race_locked_counter = 0;
+static volatile bool race_demo_use_lock = false;
+static spinlock_t race_demo_lock;
+
+static void race_demo_worker(uint32_t worker_id) {
+    for (uint32_t i = 1; i <= RACE_DEMO_ITERATIONS; i++) {
+        if (race_demo_use_lock) {
+            spinlock_lock(&race_demo_lock);
+            race_locked_counter++;
+            spinlock_unlock(&race_demo_lock);
+            // Let the other worker run after the protected increment.
+            scheduler_yield();
+        } else {
+            int snapshot = race_counter;
+            // Force an interleaving between the read and write of the counter.
+            scheduler_yield();
+            race_counter = snapshot + 1;
+        }
+
+        if (i % RACE_DEMO_REPORT_EVERY == 0) {
+            uint32_t value = race_demo_use_lock ? race_locked_counter : (uint32_t)race_counter;
+            console_printf("[RACE] Worker %u progress %u/%u | shared counter %u\n",
+                worker_id, i, RACE_DEMO_ITERATIONS, value);
+        }
     }
+    console_printf("[RACE] Worker %u complete.\n", worker_id);
+}
+
+static void race_demo_worker_one(void) { race_demo_worker(1); }
+static void race_demo_worker_two(void) { race_demo_worker(2); }
+
+static bool race_demo_run_workers(void) {
+    pcb_t *worker_one = process_create("RaceWorker-1", race_demo_worker_one, 6);
+    pcb_t *worker_two = process_create("RaceWorker-2", race_demo_worker_two, 6);
+    if (!worker_one || !worker_two) {
+        if (worker_one) {
+            kfree(worker_one->stack);
+            worker_one->stack = NULL;
+            worker_one->state = PROCESS_UNUSED;
+        }
+        if (worker_two) {
+            kfree(worker_two->stack);
+            worker_two->stack = NULL;
+            worker_two->state = PROCESS_UNUSED;
+        }
+        console_write("[ERR] Could not create both race demo workers; check process table capacity.\n");
+        return false;
+    }
+
+    // The scheduler returns here after both workers finish and yield back.
+    scheduler_yield();
+    return true;
 }
 
 void shell_execute(const char *cmd) {
@@ -131,8 +205,8 @@ void shell_execute(const char *cmd) {
     } else if (memcmp(cmd, "ps", 2) == 0 && (cmd[2] == '\0' || cmd[2] == ' ')) {
         pcb_t *plist = NULL;
         size_t total_count = process_get_all(&plist);
-        console_write("\nPID  STATE       PRIORITY  TICKS  NAME\n");
-        console_write("---  ----------  --------  -----  ------------------------\n");
+        console_write("\nPID   STATE        PRIORITY  TICKS   NAME\n");
+        console_write("----- ------------ --------- ------- ------------------------\n");
         for (size_t i = 0; i < total_count; i++) {
             if (plist[i].state != PROCESS_UNUSED) {
                 const char *st_str = "UNKNOWN";
@@ -143,8 +217,12 @@ void shell_execute(const char *cmd) {
                     case PROCESS_TERMINATED: st_str = "TERMINATED"; break;
                     default: break;
                 }
-                console_printf("%-4u %-11s %-9u %-6u %s\n",
-                    plist[i].pid, st_str, plist[i].priority, (uint32_t)plist[i].cpu_ticks, plist[i].name);
+                shell_print_uint_field(plist[i].pid, 6);
+                shell_print_field(st_str, 13);
+                shell_print_uint_field(plist[i].priority, 10);
+                shell_print_uint_field((uint32_t)plist[i].cpu_ticks, 8);
+                console_write(plist[i].name);
+                console_putc('\n');
             }
         }
         console_write("\n");
@@ -242,31 +320,40 @@ void shell_execute(const char *cmd) {
             console_printf("[HEAP] Free Memory Remaining: %u KB (%u bytes)\n\n", (uint32_t)(free_b / 1024), (uint32_t)free_b);
         }
     } else if (memcmp(cmd, "race demo", 9) == 0 && (cmd[9] == '\0' || cmd[9] == ' ')) {
-        console_write("\n--- Concurrency Fault Injection: Race Condition Test ---\n");
-        console_write("[RACE] Initializing shared variable: race_counter = 0\n");
+        const uint32_t expected = RACE_DEMO_ITERATIONS * 2;
+        console_write("\n============================================================\n");
+        console_write("       RACE CONDITION DEMONSTRATION: LIVE COUNTER\n");
+        console_write("============================================================\n");
+        console_printf("[RACE] Two workers; %u increments each; expected total %u.\n",
+            RACE_DEMO_ITERATIONS, expected);
+
+        console_write("\n[1/2] UNSYNCHRONIZED: switching between counter read and write.\n");
         race_counter = 0;
-        console_write("[RACE] Spawning 2 worker threads concurrently incrementing counter 50,000 times each...\n");
-        console_write("[RACE] Expected synchronized final counter: 100000\n");
-
-        pcb_t *t1 = process_create("RaceWorker-1", race_worker_without_lock, 4);
-        pcb_t *t2 = process_create("RaceWorker-2", race_worker_without_lock, 4);
-
-        if (!t1 || !t2) {
-            console_write("[ERR] Failed to create race worker processes.\n\n");
-        } else {
-            console_write("[RACE] Executing worker threads across scheduler time slices...\n");
-            // Yield CPU across slices until workers complete
-            for (int step = 0; step < 40; step++) {
-                scheduler_yield();
-            }
-            console_printf("[RACE] Actual final counter value: %d\n", race_counter);
-            if (race_counter < 100000) {
-                console_printf("[RACE DEMO RESULT] RACE CONDITION CONFIRMED! Lost updates: %d\n", 100000 - race_counter);
-                console_write("[EXPLANATION] Without mutex/spinlock locks, concurrent read-modify-write instructions interleaved across timer interrupts, corrupting shared memory!\n\n");
+        race_demo_use_lock = false;
+        if (race_demo_run_workers()) {
+            uint32_t unsafe_result = (uint32_t)race_counter;
+            console_printf("[RACE] Unsynchronized result: %u / %u\n", unsafe_result, expected);
+            if (unsafe_result < expected) {
+                console_printf("[RACE] Lost updates: %u\n", expected - unsafe_result);
             } else {
-                console_printf("[RACE DEMO RESULT] Counter completed with value %d.\n\n", race_counter);
+                console_write("[RACE] No lost updates observed in this run.\n");
+            }
+
+            console_write("\n[2/2] SYNCHRONIZED: protecting each increment with a spinlock.\n");
+            race_locked_counter = 0;
+            race_demo_use_lock = true;
+            spinlock_init(&race_demo_lock);
+            if (race_demo_run_workers()) {
+                console_printf("[RACE] Spinlock result: %u / %u\n", race_locked_counter, expected);
+                if (race_locked_counter == expected) {
+                    console_write("[PASS] The lock preserved every increment.\n");
+                } else {
+                    console_write("[FAIL] Protected counter did not reach the expected total.\n");
+                }
             }
         }
+        race_demo_use_lock = false;
+        console_write("============================================================\n\n");
     } else if (memcmp(cmd, "msg ", 4) == 0) {
         const char *args = cmd + 4;
         while (*args == ' ') args++;
@@ -414,6 +501,9 @@ void shell_update(void) {
         char c = serial_getchar();
         shell_handle_char(c, &has_typed);
     }
+
+    // Perform timer-requested task switches after the IRQ has returned.
+    scheduler_poll();
 
     // Blinking cursor toggle every ~30 ticks (300ms)
     bool current_cursor = ((timer_get_ticks() / 30) % 2) == 0;

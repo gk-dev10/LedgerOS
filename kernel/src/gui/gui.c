@@ -19,6 +19,8 @@ static size_t price_count = 0;
 static char last_ticker[16] = "NVDA";
 static uint32_t last_price = 350;
 static bool last_is_spike = false;
+static uint32_t demo_price = 350;
+static uint32_t demo_rng = 0x6D2B79F5;
 
 void gui_init(void) {
     price_count = 0;
@@ -31,6 +33,8 @@ void gui_init(void) {
     memcpy(last_ticker, "NVDA", 5);
     last_price = 350;
     last_is_spike = false;
+    demo_price = 350;
+    demo_rng = 0x6D2B79F5;
 }
 
 void gui_update_price(const char *ticker, uint32_t price) {
@@ -85,8 +89,8 @@ void gui_render_dashboard(void) {
     render_number(uptime_str, &up_pos, secs);
     uptime_str[up_pos++] = 's'; uptime_str[up_pos] = '\0';
 
-    gfx_draw_string(fb_w - 480, 10, "[Press ESC or 'q' to Exit]", 0x00FFBB00, 0xFFFFFFFF);
-    gfx_draw_string(fb_w - 180, 10, uptime_str, 0x0000FF00, 0xFFFFFFFF);
+    gfx_draw_string(fb_w - 600, 10, "[Press ESC or 'q' to Exit]", 0x00FFBB00, 0xFFFFFFFF);
+    gfx_draw_string(fb_w - 120, 10, uptime_str, 0x0000FF00, 0xFFFFFFFF);
     gfx_draw_rect_outline(0, 0, fb_w, 36, 0x0000FFFF);
 
     // 2. Window 1 (Top Left): Real-Time CPU Task Monitor
@@ -254,9 +258,9 @@ void gui_render_dashboard(void) {
     gfx_draw_string(w4_x + 16, w4_y + 195, tick_banner, 0x00FFFF00, 0xFFFFFFFF);
 
     if (last_is_spike) {
-        gfx_draw_string(w4_x + 220, w4_y + 195, "[SPIKE ALERT]", 0x00FF0000, 0xFFFFFFFF);
+        gfx_draw_string(w4_x + 16, w4_y + 219, "[SPIKE ALERT]", 0x00FF0000, 0xFFFFFFFF);
     } else {
-        gfx_draw_string(w4_x + 220, w4_y + 195, "[NORMAL]", 0x0000FF00, 0xFFFFFFFF);
+        gfx_draw_string(w4_x + 16, w4_y + 219, "[NORMAL]", 0x0000FF00, 0xFFFFFFFF);
     }
 }
 
@@ -273,9 +277,25 @@ void gui_run_live_mode(void) {
     gui_render_dashboard();
 
     uint64_t last_draw_ticks = timer_get_ticks();
+    uint64_t last_demo_tick = last_draw_ticks;
 
     for (;;) {
         uint64_t current_ticks = timer_get_ticks();
+        scheduler_poll();
+        // Add a simulated price tick once per second so the chart moves on its own.
+        if (current_ticks - last_demo_tick >= 100) {
+            last_demo_tick = current_ticks;
+            demo_rng ^= demo_rng << 13;
+            demo_rng ^= demo_rng >> 17;
+            demo_rng ^= demo_rng << 5;
+            int32_t change = (int32_t)(demo_rng % 21) - 10;
+            int32_t next_price = (int32_t)demo_price + change;
+            if (next_price < 50) next_price = 50;
+            if (next_price > 900) next_price = 900;
+            demo_price = (uint32_t)next_price;
+            gui_update_price("NVDA", demo_price);
+        }
+
         if (current_ticks - last_draw_ticks >= 10) { // Redraw every 10 ticks (100ms)
             last_draw_ticks = current_ticks;
             gui_render_dashboard();

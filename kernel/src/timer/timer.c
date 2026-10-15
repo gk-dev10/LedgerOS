@@ -9,10 +9,10 @@ static uint32_t timer_freq = 100;
 __attribute__((interrupt)) static void isr_timer(struct interrupt_frame *frame) {
     (void)frame;
     system_ticks++;
-    scheduler_tick();
-    
-    // Send EOI (End of Interrupt) to Master PIC
+    // Acknowledge the IRQ before scheduling: a context switch can suspend this
+    // handler, and the PIC must be free to deliver the next timer interrupt.
     outb(0x20, 0x20);
+    scheduler_tick();
 }
 
 void timer_init(uint32_t frequency) {
