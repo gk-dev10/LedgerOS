@@ -47,6 +47,7 @@ void process_init(void) {
     if (idle_pcb->stack) {
         uint64_t *stack_top = (uint64_t *)((uint8_t *)idle_pcb->stack + KERNEL_STACK_SIZE);
         *(--stack_top) = (uint64_t)process_wrapper; // Return address
+        *(--stack_top) = 0x202; // Initial RFLAGS: reserved bit 1 and interrupts enabled
         for (int i = 0; i < 6; i++) {
             *(--stack_top) = 0; // r15, r14, r13, r12, rbp, rbx
         }
@@ -130,6 +131,7 @@ pcb_t *process_create(const char *name, void (*entry_point)(void), uint32_t prio
     
     // Return address when cpu_switch_to executes 'ret'
     *(--stack_top) = (uint64_t)process_wrapper;
+    *(--stack_top) = 0x202; // Initial RFLAGS: reserved bit 1 and interrupts enabled
     
     // 6 Callee-saved registers (r15, r14, r13, r12, rbp, rbx)
     for (int r = 0; r < 6; r++) {

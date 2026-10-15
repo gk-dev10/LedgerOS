@@ -7,7 +7,8 @@
  * RSI = target process's rsp (uint64_t)
  */
 cpu_switch_to:
-    /* Save callee-saved registers of current process */
+    /* Save flags and callee-saved registers of current process */
+    pushfq
     pushq %rbx
     pushq %rbp
     pushq %r12
@@ -31,6 +32,7 @@ cpu_switch_to:
     popq %r12
     popq %rbp
     popq %rbx
+    popfq
 
     ret
 

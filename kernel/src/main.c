@@ -52,7 +52,7 @@ static void print_splash_screen(void) {
     console_write("=====================================================\n");
     console_write("    LedgerOS x86-64 Bootable Operating System v1.0   \n");
     console_write("=====================================================\n\n");
-    console_write("  [BOOT] Preemptive Scheduler & Workload Initialized.\n");
+    console_write("  [BOOT] Scheduler & Workload Initialized.\n");
     console_write("  [INFO] Type 'help' to view available OS commands.\n\n");
 }
 

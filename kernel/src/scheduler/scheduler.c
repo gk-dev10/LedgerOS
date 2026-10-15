@@ -1,6 +1,5 @@
 #include "scheduler.h"
 #include "../console/console.h"
-#include "../timer/timer.h"
 
 #define SCHED_QUANTUM 5 // 5 ticks (50 ms at 100Hz)
 
@@ -105,10 +104,10 @@ void scheduler_poll(void) {
 static void worker_task_alpha(void) {
     for (int i = 1; i <= 3; i++) {
         console_printf("[WORKER ALPHA] Processing trading signal batch #%d...\n", i);
-        uint64_t start = timer_get_ticks();
-        while (timer_get_ticks() - start < 15) {
+        for (volatile uint32_t work = 0; work < 1000000; work++) {
             asm volatile("pause");
         }
+        scheduler_yield();
     }
     console_write("[WORKER ALPHA] Completed.\n");
 }
@@ -116,16 +115,16 @@ static void worker_task_alpha(void) {
 static void worker_task_beta(void) {
     for (int i = 1; i <= 3; i++) {
         console_printf("[WORKER BETA] Validating order book depth #%d...\n", i);
-        uint64_t start = timer_get_ticks();
-        while (timer_get_ticks() - start < 15) {
+        for (volatile uint32_t work = 0; work < 1000000; work++) {
             asm volatile("pause");
         }
+        scheduler_yield();
     }
     console_write("[WORKER BETA] Completed.\n");
 }
 
 void scheduler_start_demo(void) {
-    console_write("\n--- Starting LedgerOS Preemptive Multi-Tasking Scheduler Demo ---\n");
+    console_write("\n--- Starting LedgerOS Cooperative Multi-Tasking Scheduler Demo ---\n");
     
     pcb_t *p1 = process_create("Worker_Alpha", worker_task_alpha, 5);
     pcb_t *p2 = process_create("Worker_Beta", worker_task_beta, 5);
@@ -133,7 +132,9 @@ void scheduler_start_demo(void) {
     if (p1 && p2) {
         console_printf("[SCHED] Spawned Task 1 (PID %u: %s | Priority %u)\n", p1->pid, p1->name, p1->priority);
         console_printf("[SCHED] Spawned Task 2 (PID %u: %s | Priority %u)\n", p2->pid, p2->name, p2->priority);
-        console_write("[SCHED] Preemptive scheduling active across worker threads...\n\n");
+        console_write("[SCHED] Dispatching workers; they yield between batches.\n\n");
+        scheduler_yield();
+        console_write("[SCHED] Worker demo completed.\n\n");
     } else {
         console_write("[SCHED] Failed to create demo processes!\n\n");
     }
